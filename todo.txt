@@ -1,0 +1,51 @@
+verify that en passant works in the C++ engine✔️
+fix legal moves for kings and pawns to account for the move putting us in check ✔️
+verify that castling works in both c++✔️ and python move_piece  (i think we checked this already and it works)
+verify that castling doesn't work when any of the conditions to prevent it are applied
+add code to move_piece such that it can handle toPositions greater than 63 ✔️
+verify that pawn promotions can work ✔️ (in C++)
+
+add algorithm to evaluate position based solely on material with kingValue as 50
+add minimax to determine best move
+convert output into UCI
+make algorithm play-against-able in the python interface with the UCI
+research other chess algorithms to add, such as alphabetical order and random moves
+research how to make bot a lichess bot
+fix queening interface in python and add the clever destination square protocol
+add pygame interface to allow the user to see the same board from black's pov
+add pygame interface to change algorithms for white and black
+
+long-term to do list:
+connect 4 bot 
+website 
+pokemon nuzlocke bot 
+own stegonography stuff
+
+ main calls printvalidmoveboards
+ which calls validmoves
+ which calls issideincheck, simulate moves, 
+ which calls find king, create piece from char, and invision positions 
+
+ findKing calls nothing
+ create piece from char calls only default constructors
+ invisionposition calls nothing
+
+evaluation function:
+look into literally everything in see also on the square control page
+
+pawn levers
+pawn rams
+everything in the evaluation of pieces page
+could add caching to already evaluated positions/FENs
+
+
+functions to test:
+parse FEN
+fen to board 
+legal_moves
+no_legal_moves
+game_over
+evaluate board
+choose_best_move
+minimax 
+fix legal_moves variable names vs function
