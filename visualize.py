@@ -557,6 +557,11 @@ class Screen:
             self.draw_pieces(self.buffer)
             self.blit_selected_piece()
 
+            # Now either
+            # 1. Wait for the player's move
+            # 2. Play the player's move
+            # 3. Play the engine's move
+
             # Handle player's move (if it's the player's turn)
             if self.selected_piece_original_position and square_to_move_to != (-1, -1) and self.is_white_turn == (player_side == 'white'):
                 capture, pawn_move = self.handle_move(square_to_move_to)
@@ -566,13 +571,15 @@ class Screen:
 
                 # Play the move, check for promotion
                 self.board_state = self.process_move(square_to_move_to, pawn_move)
-                # Generate FEN after player's move
+                # Update FEN after player's move
                 if self.madeMoveThisIter:
                     fen = self.generate_fen_string(halfmove, fullmove)
                     self.madeMoveThisIter = False
 
             # Handle engine's move (after player's move and if it's engine's turn)
-            if not self.is_white_turn and self.board_state == "ongoing":
+            if self.board_state == "ongoing" and self.is_white_turn != (player_side == 'white'):
+                # print('test')
+                fen = self.generate_fen_string(halfmove, fullmove)
                 response = consult_engine(fen)
                 if response:
                     from_coord, to_coord = split_algebraic(response)
@@ -692,12 +699,19 @@ class Screen:
 
         # Draw the overlay on the screen
         self.buffer.blit(overlay, (0, 0))
+        promotion_squares = []
+        if pawn_position[0] == 0: #white promotion at top of board
+            # Assuming pawn_position is the position of the promoting pawn (e.g., (6, 3) for a white pawn on the 7th rank)
+            promotion_squares = [pawn_position, #Should print a queen icon here
+                                (pawn_position[0] + 1, pawn_position[1]),  # Should print a knight icon here
+                                (pawn_position[0] + 2, pawn_position[1]),  # Should print a rook icon here
+                                (pawn_position[0] + 3, pawn_position[1])]  # Should print a bishop icon here
+        if pawn_position[0] == 7: #black promotion at bottom of board
+            promotion_squares = [pawn_position, #Should print a queen icon here
+                                (pawn_position[0] - 1, pawn_position[1]),  # Should print a knight icon here
+                                (pawn_position[0] - 2, pawn_position[1]),  # Should print a rook icon here
+                                (pawn_position[0] - 3, pawn_position[1])]  # Should print a bishop icon here
 
-        # Assuming pawn_position is the position of the promoting pawn (e.g., (6, 3) for a white pawn on the 7th rank)
-        promotion_squares = [pawn_position, #Should print a queen icon here
-                            (pawn_position[0] + 1, pawn_position[1]),  # Should print a knight icon here
-                            (pawn_position[0] + 2, pawn_position[1]),  # Should print a rook icon here
-                            (pawn_position[0] + 3, pawn_position[1])]  # Should print a bishop icon here
 
         # Assuming pawn_position is the position of the promoting pawn (e.g., (6, 3) for a white pawn on the 7th rank)
         promotion_pieces = ['Q', 'N', 'R', 'B'] if pawn_position[0] == 0 else ['q', 'n', 'r', 'b']
@@ -751,14 +765,11 @@ class Screen:
             elif event.type == pygame.MOUSEBUTTONUP: #I think the issue I'm having is here. It's that there needs to be a cooldown.
                 if self.selected_promotion_piece != (-1, -1):
                     self.shouldShowPromotionInterface = False
-                    if self.selected_promotion_piece[0] == 0:
-                        return 'Q'
-                    elif self.selected_promotion_piece[0] == 1:
-                        return 'N'
-                    elif self.selected_promotion_piece[0] == 2:
-                        return 'R'
-                    elif self.selected_promotion_piece[0] == 3:
-                        return 'B'
+                    promotion_map = {
+                        0: 'Q', 1: 'N', 2: 'R', 3: 'B',
+                        7: 'q', 6: 'n', 5: 'r', 4: 'b'
+                    }
+                    return promotion_map.get(self.selected_promotion_piece[0], None)
         self.shouldShowPromotionInterface = True
         return '' #Code for continue showing the interface
 
@@ -1270,13 +1281,13 @@ starting_position = "rnbqwbnrpppppppp................................PPPPPPPPRNB
 # starting_position = "r...k..rppp.pppp..n......Bp...........b.BP..qN..P.PP..PPRN..K..R"
 # starting_position = "r....rk.pp...ppp.pp.......B..............P..PPR.PBP....P..K....."
 # starting_position =  "r...w.......r...............................................W..R"
-# starting_position = "k.........KP...................................................."
+starting_position = "k.........KP...................................................."
 # starting_position =  "k.........K............................................p........"
 # starting_position = "...r...kppp....p..b..p.....p.......Q.pR.P.B......PP..PPP....R.K."
 # starting_position = "k............................................................rKR"
 # starting_position = "................................................................"
 # starting_position = "k..q............................................PPP.....R...U..."
-starting_position =   ".r.r.k...ppbqp.Qp.n.p......pP.Np...P...PP.....R..PP..PP..K.R...."
+# starting_position =   ".r.r.k...ppbqp.Qp.n.p......pP.Np...P...PP.....R..PP..PP..K.R...."
 
 screen.board_as_list = set_board_from_string(starting_position)
 screen.run()
