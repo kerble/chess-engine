@@ -566,7 +566,6 @@ class Screen:
 
                 # Play the move, check for promotion
                 self.board_state = self.process_move(square_to_move_to, pawn_move)
-                # print_board(self.board_as_list)
                 # Generate FEN after player's move
                 if self.madeMoveThisIter:
                     fen = self.generate_fen_string(halfmove, fullmove)
@@ -1260,7 +1259,7 @@ class King(Piece):
             if(self.color == "white" and (check_status == "white_in_check" or check_status == "both_in_check")):
                 #if so, don't add it to the list of valid moves.
                 continue
-            elif(self.color == "black" and (check_status == "white_in_check" or check_status == "both_in_check")):
+            elif(self.color == "black" and (check_status == "black_in_check" or check_status == "both_in_check")):
                 continue
             else:
                 valid_moves.append(new_position)
@@ -1276,7 +1275,8 @@ starting_position = "rnbqwbnrpppppppp................................PPPPPPPPRNB
 # starting_position = "...r...kppp....p..b..p.....p.......Q.pR.P.B......PP..PPP....R.K."
 # starting_position = "k............................................................rKR"
 # starting_position = "................................................................"
-starting_position = "k..q............................................PPP.....R...U..."
+# starting_position = "k..q............................................PPP.....R...U..."
+starting_position =   ".r.r.k...ppbqp.Qp.n.p......pP.Np...P...PP.....R..PP..PP..K.R...."
 
 screen.board_as_list = set_board_from_string(starting_position)
 screen.run()
