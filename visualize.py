@@ -275,11 +275,17 @@ def move_piece(board, from_position, to_position):
     
 #Returns the coordinates of the kings 
 def find_kings(board):
-    king_aliases = ["K", "k", "W", "w", "U", "u", "S", "s"]
+    white_king_aliases = ["K", "W", "U", "S"]
+    black_king_aliases = ["k", "w", "u", "s"]
+
     kings = []
     for row in range(8):
         for col in range(8):
-            if board[row][col] in king_aliases:
+            if board[row][col] in white_king_aliases:
+                kings.append((row, col))
+    for row in range(8):
+        for col in range(8):
+            if board[row][col] in black_king_aliases:
                 kings.append((row, col))
     return kings
 
@@ -891,6 +897,11 @@ class Screen:
             squares_to_highlight = self.selected_piece_valid_moves
         highlight_color_light = (130, 150, 105)  # Light square highlight color
         highlight_color_dark = (100, 111, 64)   # Dark square highlight color
+        # Define red gradient color for check highlight
+        # Check if any king is in check
+        check_status = look_for_check(self.board_as_list)
+        king_positions = find_kings(self.board_as_list)  # [(white_king_row, white_king_col), (black_king_row, black_king_col)]
+        check_gradient_color = (255, 0, 0, 128)  # Semi-transparent red
         last_move_highlight_color_dark = (170, 162, 58)
         last_move_highlight_color_light = (205, 210, 106)
         for row in range(8):
@@ -941,6 +952,18 @@ class Screen:
                     cursor_board_pos_x = mouse_x // self.square_size
                     if (cursor_board_pos_y, cursor_board_pos_x) == (row, col) and (row, col) in squares_to_highlight:
                         pygame.draw.rect(surface, highlight_color, (col * self.square_size, row * self.square_size, self.square_size, self.square_size))
+            # Add red gradient circle behind the king in check
+        if "white_in_check" in check_status:
+            white_king_row, white_king_col = king_positions[0]
+            center_x = (white_king_col + 0.5) * self.square_size
+            center_y = (white_king_row + 0.5) * self.square_size
+            pygame.draw.circle(surface, check_gradient_color, (int(center_x), int(center_y)), self.square_size // 2, 0)
+
+        if "black_in_check" in check_status:
+            black_king_row, black_king_col = king_positions[1]
+            center_x = (black_king_col + 0.5) * self.square_size
+            center_y = (black_king_row + 0.5) * self.square_size
+            pygame.draw.circle(surface, check_gradient_color, (int(center_x), int(center_y)), self.square_size // 2, 0)
     def draw_pieces(self, surface=None):
         if surface is None:
             surface = self.screen  # Default to drawing on the screen
@@ -1281,7 +1304,7 @@ starting_position = "rnbqwbnrpppppppp................................PPPPPPPPRNB
 # starting_position = "r...k..rppp.pppp..n......Bp...........b.BP..qN..P.PP..PPRN..K..R"
 # starting_position = "r....rk.pp...ppp.pp.......B..............P..PPR.PBP....P..K....."
 # starting_position =  "r...w.......r...............................................W..R"
-starting_position = "k.........KP...................................................."
+# starting_position = "k.........KP...................................................."
 # starting_position =  "k.........K............................................p........"
 # starting_position = "...r...kppp....p..b..p.....p.......Q.pR.P.B......PP..PPP....R.K."
 # starting_position = "k............................................................rKR"
