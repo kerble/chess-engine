@@ -102,78 +102,6 @@ def create_piece_from_char(char, position):
     else:
         return None  # Return None for empty squares (e.g., '.')
     
-# def move_piece(board, from_position, to_position):
-#     row_from, col_from = from_position
-#     row_to, col_to = to_position
-#     king_aliases = ['S', 'W', 'U', 's', 'w', 'u']
-#     piece = board[row_from][col_from]
-    
-#     # Check if the pawn is promoting (promotion coordinates are greater than 63)
-#     if piece == 'P' or piece == 'p' and row_to > 7:
-#         # Extract the promotion code before converting coordinates
-#         code = col_to // 4
-#         print(f"code is: {code}")
-#         # Determine the promoted piece
-#         promotion_pieces = ['q', 'n', 'r', 'b']
-#         promo_piece = promotion_pieces[code]
-#         print(f"piece is: {promo_piece}")
-#         # Conditionally uppercase the piece if it's a white pawn
-#         # if piece.isupper():
-#         #     piece = promo_piece.upper()
-#         piece = promo_piece
-        
-#         # Now convert the promotion coordinates to regular coordinates
-#         print(f"giving {row_to}{col_to}")
-#         to_position = promotion_coord_to_regular_coord((row_to, col_to))
-#         row_to = to_position[0]
-#         col_to = to_position[1]
-
-#     # Revoke en passant eligibility on other pieces
-#     for row in range(8):
-#         for col in range(8):
-#             if board[row][col] == 'E':
-#                 board[row][col] = 'P'
-#             elif board[row][col] == 'e':
-#                 board[row][col] = 'p'
-
-#     # Handle en passant eligibility and capture
-#     if piece == 'P' or piece == 'p':
-#         en_passant_eligible = False
-#         if piece == 'P' and row_from - row_to == 2:  # White pawn moving two squares
-#             en_passant_eligible = (
-#                 (col_from > 0 and board[4][col_to - 1] == 'p') or
-#                 (col_from < 7 and board[4][col_to + 1] == 'p')
-#             )
-#         elif piece == 'p' and row_from - row_to == -2:  # Black pawn moving two squares
-#             en_passant_eligible = (
-#                 (col_from > 0 and board[3][col_to - 1] == 'P') or
-#                 (col_from < 7 and board[3][col_to + 1] == 'P')
-#             )
-        
-#         if en_passant_eligible:
-#             piece = 'E' if piece == 'P' else 'e'
-
-#         # Handle en passant capture
-#         if col_to != col_from and board[row_to][col_to] == '.':
-#             if piece.isupper():
-#                 board[row_to + 1][col_to] = '.'
-#             elif piece.islower():
-#                 board[row_to - 1][col_to] = '.'
-
-#     # Handle castling rights revocation
-#     if piece == 'R' or piece == 'r':
-#         handle_castling_revoke(board, row_from, col_from)
-
-#     # Handle king movement and castling
-#     if piece in king_aliases:
-#         handle_king_movement(board, row_from, col_from, row_to, col_to)
-#         piece = 'K' if piece.isupper() else 'k'  # Revoke castling rights
-    
-#     # Update the board with the new piece position
-#     board[row_from][col_from] = "."
-#     board[row_to][col_to] = piece
-
-#     return board
 
 def move_piece(board, from_position, to_position):
     row_from, col_from = from_position
@@ -491,7 +419,6 @@ def find_en_passant_square(board):
 def consult_engine(fen) -> str:
     # Run the compiled C++ program and capture the output
     run_process = subprocess.run(["./engine"] + fen.split(), capture_output=True, text=True)
-    # run_process = subprocess.run(["./hello"], capture_output=True, text=True)
 
     if run_process.returncode == 0:
         return run_process.stdout
@@ -535,12 +462,52 @@ class Screen:
 
         self.madeMoveThisIter = False
 
+    # # I'm going to see a feature. A creature feature. Featuring: The creature.
+
+    def handle_moves(self, player_side, square_to_move_to, halfmove, fullmove):
+        # Handle player's move (if it's the player's turn)
+        if self.selected_piece_original_position and square_to_move_to != (-1, -1) and self.is_white_turn == (player_side == 'white'):
+            capture, pawn_move = self.check_halfmove(square_to_move_to)
+            
+            # Reset halfmove counter on capture or pawn move
+            halfmove = 0 if capture or pawn_move else halfmove + 1
+
+            # Play the move, check for promotion
+            self.board_state = self.process_player_move(square_to_move_to, pawn_move)
+            # Update FEN after player's move
+            if self.madeMoveThisIter:
+                fen = self.generate_fen_string(halfmove, fullmove)
+                self.madeMoveThisIter = False
+
+            # Return after player's move, so engine is not consulted in this call
+            return halfmove, False
+
+        # If it's the engine's turn, proceed (this part will now happen in the next loop iteration)
+        if self.board_state == "ongoing" and self.is_white_turn != (player_side == 'white'):
+            fen = self.generate_fen_string(halfmove, fullmove)
+            response = consult_engine(fen)
+            if response:
+                from_coord, to_coord = split_algebraic(response)
+                row = from_coord[0]
+                col = from_coord[1]
+
+                promotion_piece = ''
+                if len(response) == 5:
+                    promotion_piece = response[4]
+                    print(response)
+                    self.board_as_list[row][col] = promotion_piece
+                self.board_state = self.play_move(from_coord, to_coord)
+            return halfmove, True  # Indicate that engine's move was made
+
+        return halfmove, False  # No move made by engine yet
+
+
     def run(self):
-        # Hardcoded player side (replace with actual UI choice later)
         player_side = 'white'  # 'white' or 'black'
         square_to_move_to = (-1, -1)
         fullmove = 1  # Incremented after black moves
         halfmove = 0  # Half moves since a capture/pawn move (for fifty-move rule)
+        engine_turn = False
 
         while self.running:
             # Handle events
@@ -562,51 +529,23 @@ class Screen:
             self.highlight_squares(self.buffer)
             self.draw_pieces(self.buffer)
             self.blit_selected_piece()
+            # Update display
+            self.update_display()
+            # Handle player and engine moves, but return before consulting engine in the same loop
+            if not engine_turn:
+                # print("player call")
+                halfmove, engine_turn = self.handle_moves(player_side, square_to_move_to, halfmove, fullmove)
 
-            # Now either
-            # 1. Wait for the player's move
-            # 2. Play the player's move
-            # 3. Play the engine's move
-
-            # Handle player's move (if it's the player's turn)
-            if self.selected_piece_original_position and square_to_move_to != (-1, -1) and self.is_white_turn == (player_side == 'white'):
-                capture, pawn_move = self.handle_move(square_to_move_to)
-
-                # Reset halfmove counter on capture or pawn move
-                halfmove = 0 if capture or pawn_move else halfmove + 1
-
-                # Play the move, check for promotion
-                self.board_state = self.process_move(square_to_move_to, pawn_move)
-                # Update FEN after player's move
-                if self.madeMoveThisIter:
-                    fen = self.generate_fen_string(halfmove, fullmove)
-                    self.madeMoveThisIter = False
-
-            # Handle engine's move (after player's move and if it's engine's turn)
-            if self.board_state == "ongoing" and self.is_white_turn != (player_side == 'white'):
-                # print('test')
-                fen = self.generate_fen_string(halfmove, fullmove)
-                response = consult_engine(fen)
-                if response:
-                    from_coord, to_coord = split_algebraic(response)
-                    row = from_coord[0]
-                    col = from_coord[1]
-
-                    promotion_piece = ''
-                    if(len(response) == 5):
-                        promotion_piece = response[4]
-                        print(response)
-                        self.board_as_list[row][col] = promotion_piece
-                    self.board_state = self.play_move(from_coord, to_coord)
+            # If it's the engine's turn, consult the engine
+            if engine_turn:
+                # print("engine call")
+                halfmove, engine_turn = self.handle_moves(player_side, square_to_move_to, halfmove, fullmove)
 
             # Check game state
             if self.board_state != "ongoing":
                 self.running = False
 
-            # Update display
-            self.update_display()
-
-    def handle_move(self, square_to_move_to):
+    def check_halfmove(self, square_to_move_to):
         """Handle user's move, check if it's a capture or pawn move."""
         row, col = square_to_move_to
         frow, fcol = self.selected_piece_original_position
@@ -615,7 +554,7 @@ class Screen:
 
         return capture, pawn_move
 
-    def process_move(self, square_to_move_to, pawn_move):
+    def process_player_move(self, square_to_move_to, pawn_move):
         """Process the player's move, handling promotions if necessary."""
         frow, fcol = self.selected_piece_original_position
         trow = square_to_move_to[0]
@@ -980,9 +919,6 @@ class Screen:
                     if image:
                         surface.blit(image, (col * self.square_size, row * self.square_size))
 
-
-
-
 class Board:
     def __init__(self, screen_width, screen_height):
         self.screen_width = screen_width
@@ -1303,14 +1239,14 @@ screen = Screen(480, 480)
 starting_position = "rnbqwbnrpppppppp................................PPPPPPPPRNBQWBNR"
 # starting_position = "r...k..rppp.pppp..n......Bp...........b.BP..qN..P.PP..PPRN..K..R"
 # starting_position = "r....rk.pp...ppp.pp.......B..............P..PPR.PBP....P..K....."
-# starting_position =  "r...w.......r...............................................W..R"
+# starting_position = "r...w.......r...............................................W..R"
 # starting_position = "k.........KP...................................................."
-# starting_position =  "k.........K............................................p........"
+# starting_position = "k.........K............................................p........"
 # starting_position = "...r...kppp....p..b..p.....p.......Q.pR.P.B......PP..PPP....R.K."
 # starting_position = "k............................................................rKR"
 # starting_position = "................................................................"
 # starting_position = "k..q............................................PPP.....R...U..."
-# starting_position =   ".r.r.k...ppbqp.Qp.n.p......pP.Np...P...PP.....R..PP..PP..K.R...."
+# starting_position = ".r.r.k...ppbqp.Qp.n.p......pP.Np...P...PP.....R..PP..PP..K.R...."
 
 screen.board_as_list = set_board_from_string(starting_position)
 screen.run()
