@@ -462,8 +462,7 @@ class Screen:
 
         self.madeMoveThisIter = False
 
-    # # I'm going to see a feature. A creature feature. Featuring: The creature.
-
+    # I'm going to see a feature. A creature feature. Featuring: The creature.
     def handle_moves(self, player_side, square_to_move_to, halfmove, fullmove):
         # Handle player's move (if it's the player's turn)
         if self.selected_piece_original_position and square_to_move_to != (-1, -1) and self.is_white_turn == (player_side == 'white'):
@@ -478,11 +477,9 @@ class Screen:
             if self.madeMoveThisIter:
                 fen = self.generate_fen_string(halfmove, fullmove)
                 self.madeMoveThisIter = False
+            return halfmove
 
-            # Return after player's move, so engine is not consulted in this call
-            return halfmove, False
-
-        # If it's the engine's turn, proceed (this part will now happen in the next loop iteration)
+        # Handle engine's move (if it's engine's turn)
         if self.board_state == "ongoing" and self.is_white_turn != (player_side == 'white'):
             fen = self.generate_fen_string(halfmove, fullmove)
             response = consult_engine(fen)
@@ -494,20 +491,19 @@ class Screen:
                 promotion_piece = ''
                 if len(response) == 5:
                     promotion_piece = response[4]
-                    print(response)
                     self.board_as_list[row][col] = promotion_piece
                 self.board_state = self.play_move(from_coord, to_coord)
-            return halfmove, True  # Indicate that engine's move was made
+            return halfmove
 
-        return halfmove, False  # No move made by engine yet
-
+        return halfmove
+    
 
     def run(self):
-        player_side = 'white'  # 'white' or 'black'
+        # Hardcoded player side (replace with actual UI choice later)
+        player_side = 'black'  # 'white' or 'black'
         square_to_move_to = (-1, -1)
         fullmove = 1  # Incremented after black moves
         halfmove = 0  # Half moves since a capture/pawn move (for fifty-move rule)
-        engine_turn = False
 
         while self.running:
             # Handle events
@@ -529,21 +525,98 @@ class Screen:
             self.highlight_squares(self.buffer)
             self.draw_pieces(self.buffer)
             self.blit_selected_piece()
-            # Update display
-            self.update_display()
-            # Handle player and engine moves, but return before consulting engine in the same loop
-            if not engine_turn:
-                # print("player call")
-                halfmove, engine_turn = self.handle_moves(player_side, square_to_move_to, halfmove, fullmove)
 
-            # If it's the engine's turn, consult the engine
-            if engine_turn:
-                # print("engine call")
-                halfmove, engine_turn = self.handle_moves(player_side, square_to_move_to, halfmove, fullmove)
+            # Handle player and engine moves
+            halfmove = self.handle_moves(player_side, square_to_move_to, halfmove, fullmove)
 
             # Check game state
             if self.board_state != "ongoing":
                 self.running = False
+
+            # Update display
+            self.update_display()
+    # def handle_moves(self, player_side, square_to_move_to, halfmove, fullmove):
+    #     # Handle player's move (if it's the player's turn)
+    #     if self.selected_piece_original_position and square_to_move_to != (-1, -1) and self.is_white_turn == (player_side == 'white'):
+    #         capture, pawn_move = self.check_halfmove(square_to_move_to)
+            
+    #         # Reset halfmove counter on capture or pawn move
+    #         halfmove = 0 if capture or pawn_move else halfmove + 1
+
+    #         # Play the move, check for promotion
+    #         self.board_state = self.process_player_move(square_to_move_to, pawn_move)
+    #         # Update FEN after player's move
+    #         if self.madeMoveThisIter:
+    #             fen = self.generate_fen_string(halfmove, fullmove)
+    #             self.madeMoveThisIter = False
+
+    #         # Return after player's move, so engine is not consulted in this call
+    #         return halfmove, False
+
+    #     # If it's the engine's turn, proceed (this part will now happen in the next loop iteration)
+    #     if self.board_state == "ongoing" and self.is_white_turn != (player_side == 'white'):
+    #         fen = self.generate_fen_string(halfmove, fullmove)
+    #         response = consult_engine(fen)
+    #         if response:
+    #             from_coord, to_coord = split_algebraic(response)
+    #             row = from_coord[0]
+    #             col = from_coord[1]
+
+    #             promotion_piece = ''
+    #             if len(response) == 5:
+    #                 promotion_piece = response[4]
+    #                 print(response)
+    #                 self.board_as_list[row][col] = promotion_piece
+    #             self.board_state = self.play_move(from_coord, to_coord)
+    #         return halfmove, True  # Indicate that engine's move was made
+
+    #     return halfmove, False  # No move made by engine yet
+
+
+    # def run(self):
+    #     player_side = 'white'  # 'white' or 'black'
+    #     square_to_move_to = (-1, -1)
+    #     fullmove = 1  # Incremented after black moves
+    #     halfmove = 0  # Half moves since a capture/pawn move (for fifty-move rule)
+    #     engine_turn = False
+
+    #     while self.running:
+    #         # Handle events
+    #         for event in pygame.event.get():
+    #             if event.type == pygame.QUIT:
+    #                 self.running = False
+    #             elif event.type == pygame.MOUSEBUTTONDOWN:
+    #                 if event.button == 1:
+    #                     square_to_move_to = self.handle_mouse_button_down(event)
+    #             elif event.type == pygame.MOUSEMOTION:
+    #                 self.handle_mouse_motion(event)
+    #             elif event.type == pygame.MOUSEBUTTONUP:
+    #                 if event.button == 1:
+    #                     square_to_move_to = self.handle_mouse_button_up(event)
+
+    #         # Clear and redraw the board and pieces
+    #         self.clear_buffer()
+    #         self.draw_board(self.buffer)
+    #         self.highlight_squares(self.buffer)
+    #         self.draw_pieces(self.buffer)
+    #         self.blit_selected_piece()
+    #         # Update display
+    #         self.update_display()
+    #         # Handle player and engine moves, but return before consulting engine in the same loop
+    #         if not engine_turn:
+    #             # print("player call")
+    #             halfmove, engine_turn = self.handle_moves(player_side, square_to_move_to, halfmove, fullmove)
+
+    #         # If it's the engine's turn, consult the engine
+    #         if engine_turn:
+    #             # print("engine call")
+    #             halfmove, engine_turn = self.handle_moves(player_side, square_to_move_to, halfmove, fullmove)
+
+    #         # Check game state
+    #         if self.board_state != "ongoing":
+    #             self.running = False
+
+
 
     def check_halfmove(self, square_to_move_to):
         """Handle user's move, check if it's a capture or pawn move."""
