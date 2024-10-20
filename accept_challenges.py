@@ -2,8 +2,7 @@ import requests
 import json
 import chess
 import subprocess
-import time
-API_TOKEN = "api key"  # Replace this with your actual token
+API_TOKEN = "lip_zOcWilMbHBh9vsPn9Ke6"  # Replace this with your actual token
 headers = {
     "Authorization": f"Bearer {API_TOKEN}",
     "Content-Type": "application/json"

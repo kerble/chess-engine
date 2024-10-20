@@ -469,9 +469,16 @@ class Screen:
             # Reset halfmove counter on capture or pawn move
             halfmove = 0 if capture or pawn_move else halfmove + 1
 
+            back_rank = 0 if player_side == 'white' else 7
             # Play the move, check for promotion
             move = coordinate_to_algebraic(self.selected_piece_original_position) + coordinate_to_algebraic(square_to_move_to)
             self.board_state = self.process_player_move(square_to_move_to, pawn_move)
+            promotion_piece = ''
+            if pawn_move and square_to_move_to[0] == back_rank:
+                promotion_piece = self.board_as_list[square_to_move_to[0]][square_to_move_to[1]].lower()
+                move += promotion_piece
+                if promotion_piece == '.':
+                    return ""
             return move
 
         # Handle engine's move (if it's engine's turn)
@@ -535,10 +542,13 @@ class Screen:
         command = ["python", "uci_to_pgn.py"] + moves  # List: command + arguments
 
         # Run the subprocess
+        # print(command)
         run_process = subprocess.run(command, capture_output=True, text=True)
-
-        if run_process.returncode == 0:
-            print(run_process.stdout)
+        # Print stderr (standard error) to check for any error messages
+        if run_process.stderr:
+            print("Error:", run_process.stderr)
+        # if run_process.returncode == 0:
+        print(run_process.stdout)
         
 
 
@@ -726,7 +736,6 @@ class Screen:
         self.white_is_in_check = True if("white_in_check" == look_for_check(self.board_as_list)) else False
         self.black_is_in_check = True if("black_in_check" == look_for_check(self.board_as_list)) else False
 
-        # self.madeMoveThisIter = True
         # print(f"is white's turn? {self.is_white_turn}")
         # print(f"is black in check? {self.black_is_in_check}")
         # print(f"no legal moves? {self.no_legal_moves(self.board_as_list)}")

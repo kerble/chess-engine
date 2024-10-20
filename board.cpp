@@ -56,183 +56,6 @@ void print_board(const string& board) {
     }
 }
 
-// string movePiece(const string& board, int fromIndex, int toIndex) {
-//     int fromRow = fromIndex / 8;
-//     int fromCol = fromIndex % 8;
-//     int toRow = toIndex / 8;
-//     int toCol = toIndex % 8;
-    
-//     string kingAliases = "SWUswu"; // Kings and their castling rights
-
-//     // Create a copy of the board to make changes
-//     string newBoard = board;
-
-//     // Revoke en passant eligibility on other pieces
-//     for (int row = 0; row < 8; ++row) {
-//         for (int col = 0; col < 8; ++col) {
-//             char piece = newBoard[row * 8 + col];
-//             if (piece == 'E') {
-//                 newBoard[row * 8 + col] = 'P';
-//             } else if (piece == 'e') {
-//                 newBoard[row * 8 + col] = 'p';
-//             }
-//         }
-//     }
-
-//     // Check if there's a piece at the fromPosition
-//     char piece = newBoard[fromRow * 8 + fromCol];
-//     if (piece != '.') {
-//         int white_king_pos = findKing(newBoard, true);
-//         int black_king_pos = findKing(newBoard, false);
-//         // First order of business is detecting if we're moving a pawn or not for some pawn-specific logic.
-//         if (piece == 'P' || piece == 'p') {
-//             if (abs(toRow - fromRow) == 2) { // if a pawn moved forward two squares
-//                 piece = (piece == 'P') ? 'E' : 'e'; // make it eligible to be en passanted
-//             }
-//             else if (toCol != fromCol && newBoard[toRow * 8 + toCol] == '.') { // capturing en passant
-//                 if (isupper(piece)) {
-//                     newBoard[(toRow + 1) * 8 + toCol] = '.';
-//                 } else {
-//                     newBoard[(toRow - 1) * 8 + toCol] = '.';
-//                 }
-//             }
-//             else if (toIndex > 63) { // Queening
-//                 int piece_code = toIndex % 4;
-//                 char piece_char = '.';
-//                 switch(piece_code){
-//                     case 0:
-//                         // toIndex = 
-//                         piece_char = isupper(piece) ? 'Q' : 'q';
-//                         break;
-//                     case 1:
-//                         piece_char = isupper(piece) ? 'N' : 'n';
-//                         break;
-//                     case 2:
-//                         piece_char = isupper(piece) ? 'R' : 'r';
-//                         break;
-//                     case 3:
-//                         piece_char = isupper(piece) ? 'B' : 'b';
-//                         break;
-//                     default:
-//                         cerr << "Can't promote to this piece." << endl;
-//                         break;
-//                 }
-//                 switch (toIndex) {
-//                     case 64: case 65: case 66: case 67:
-//                         toIndex = 0;
-//                         break;
-//                     case 68: case 69: case 70: case 71:
-//                         toIndex = 1;
-//                         break;
-//                     case 72: case 73: case 74: case 75:
-//                         toIndex = 2;
-//                         break;
-//                     case 76: case 77: case 78: case 79:
-//                         toIndex = 3;
-//                         break;
-//                     case 80: case 81: case 82: case 83:
-//                         toIndex = 4;
-//                         break;
-//                     case 84: case 85: case 86: case 87:
-//                         toIndex = 5;
-//                         break;
-//                     case 88: case 89: case 90: case 91:
-//                         toIndex = 6;
-//                         break;
-//                     case 92: case 93: case 94: case 95:
-//                         toIndex = 7;
-//                         break;
-//                     case 96: case 97: case 98: case 99:
-//                         toIndex = 56;
-//                         break;
-//                     case 100: case 101: case 102: case 103:
-//                         toIndex = 57;
-//                         break;
-//                     case 104: case 105: case 106: case 107:
-//                         toIndex = 58;
-//                         break;
-//                     case 108: case 109: case 110: case 111:
-//                         toIndex = 59;
-//                         break;
-//                     case 112: case 113: case 114: case 115:
-//                         toIndex = 60;
-//                         break;
-//                     case 116: case 117: case 118: case 119:
-//                         toIndex = 61;
-//                         break;
-//                     case 120: case 121: case 122: case 123:
-//                         toIndex = 62;
-//                         break;
-//                     case 124: case 125: case 126: case 127:
-//                         toIndex = 63;
-//                         break;
-//                     default:
-//                         cerr << "Invalid promotion index." << endl;
-//                         break;
-//                 }
-//                 piece = piece_char;
-//             }
-//         }
-//         // 60 and 4 are the default positions of the kings.
-//         // Second, we need to revoke castling rights if it is a rook
-//         else if ((piece == 'r' && black_king_pos == 4) || (piece == 'R' && white_king_pos == 60)) {
-//             bool isQueensideRook = (fromCol == 0);
-
-//             // Determine the character representing the king's castling rights
-//             char& kingRights = newBoard[isupper(piece) ? 60 : 4]; 
-
-//             if (isQueensideRook) {
-//                 if (kingRights == 'W' || kingRights == 'w') {
-//                     kingRights = (isupper(piece)) ? 'S' : 's';
-//                 } else if (kingRights == 'U' || kingRights == 'u') {
-//                     kingRights = (isupper(piece)) ? 'K' : 'k';
-//                 }
-//             }
-//             else {
-//                 if (kingRights == 'W' || kingRights == 'w') {
-//                     kingRights = (isupper(piece)) ? 'U' : 'u';
-//                 } else if (kingRights == 'S' || kingRights == 's') {
-//                     kingRights = (isupper(piece)) ? 'K' : 'k';
-//                 }
-//             }
-//         }
-
-//         // Third, we need to handle castling rights for the king.
-//         else if (kingAliases.find(piece) != string::npos) { //If we're moving a king that has any sorts of castling rights
-//             piece = (isupper(piece)) ? 'K' : 'k'; // Revoke all castling rights
-//             if (abs(fromCol - toCol) == 2) { // If we are castling
-//                 if (toCol == 2) { // Queenside castling
-//                     if (isupper(piece)) { // White
-//                         newBoard[7 * 8 + 0] = '.'; //Also move the rook
-//                         newBoard[7 * 8 + 3] = 'R'; //Also move the rook
-//                     } else { // Black
-//                         newBoard[0 * 8 + 0] = '.'; //Also move the rook
-//                         newBoard[0 * 8 + 3] = 'r'; //Also move the rook
-//                     }
-//                 } else { // Kingside castling
-//                     if (isupper(piece)) { // White
-//                         newBoard[7 * 8 + 7] = '.'; //Also move the rook
-//                         newBoard[7 * 8 + 5] = 'R'; //Also move the rook
-//                     } else { // Black
-//                         newBoard[0 * 8 + 7] = '.'; //Also move the rook
-//                         newBoard[0 * 8 + 5] = 'r'; //Also move the rook
-//                     }
-//                 }
-//             }
-//         }
-
-//         toRow = toIndex / 8;
-//         toCol = toIndex % 8;
-//         // Update the board state
-//         newBoard[fromRow * 8 + fromCol] = '.';
-//         newBoard[toRow * 8 + toCol] = piece;
-
-//         return newBoard;
-//     } else {
-//         cerr << "Tried to move a piece that doesn't exist." << endl;
-//         return board; // Return the original board if no piece was found
-//     }
-// }
 pair<int, char> unpackPromotionIndex(int toIndex) {
     char promotionPiece = '\0';  // Default to no promotion
 
@@ -344,8 +167,6 @@ string simulateMove(const string& board, int fromPosition, int toPosition) {
 class Piece {
 public:
     Piece(bool isWhite, int position) : isWhite(isWhite), position(position) {}
-
-    // virtual set<int> validMoves(const string& board) const;
 
     virtual set<int> validMoves(const string& board) const {
         set<int> validMoves;
@@ -1045,9 +866,7 @@ void printValidMovesBoards(const string& board, bool isWhite) {
     }
 }
 /* Return a board evaluation (double) from a BoardState struct */
-// int evaluations = 0;
 double evaluateBoard(const BoardState& boardState) {
-    // evaluations++;
     // Call game_over with the BoardState directly
     int game_result = game_over(boardState);
 
@@ -1560,49 +1379,6 @@ int game_over(const BoardState& boardState) {
     return 0; // The game is not over
 }
 
-// double minimax(BoardState& boardState, int depth) {
-//     // Base case for recursion
-//     if (depth == 0) {
-//         double eval = evaluateBoard(boardState);
-
-//         if (eval == -50000) { // black checkmate
-//             eval -= depth; // Apply depth-based adjustment
-//         } else if (eval == 50000) { // white checkmate
-//             eval += depth;
-//         }
-
-//         return eval;
-//     }
-
-//     // Get legal moves for the active player
-//     vector<pair<int, int>> legalMoves = legal_moves(boardState);
-//     double best_eval = (boardState.active_color == 'w') ? -2000000000 : 2000000000; // Initialize best_eval based on color
-
-//     for (const auto& move : legalMoves) {
-//         string new_board = simulateMove(boardState.board, move.first, move.second);
-        
-//         // Create a new BoardState for the next recursive call
-//         BoardState newBoardState = {
-//             new_board,
-//             (boardState.active_color == 'w') ? 'b' : 'w', // Switch color
-//             boardState.castling_rights,
-//             boardState.en_passant,
-//             boardState.halfmove,
-//             boardState.fullmove
-//         };
-
-//         double eval = minimax(newBoardState, depth - 1);
-
-//         // Update the best_eval based on whether it's white's or black's turn
-//         if (boardState.active_color == 'w') {
-//             best_eval = max(best_eval, eval); // Maximize for white
-//         } else {
-//             best_eval = min(best_eval, eval); // Minimize for black
-//         }
-//     }
-
-//     return best_eval;
-// }
 double minimax(BoardState& boardState, int depth, double alpha, double beta) {
     // Base case for recursion
     if (depth == 0) {
@@ -1664,9 +1440,7 @@ string choose_best_move(const BoardState& boardState, int depth) {
     vector<pair<int, int>> legalMoves = legal_moves(boardState);  // Use the new legal_moves function
     pair<int, int> best_move;
     double best_eval = (active_color == 'w') ? -INFINITY : INFINITY; // Initialize best_eval based on the active color
-    // for (const auto& move : legalMoves) {
-    //     cout << coordinate_to_algebraic(move.first) << coordinate_to_algebraic(move.second) << endl;
-    // }
+
     for (const auto& move : legalMoves) {
         string new_board = simulateMove(boardState.board, move.first, move.second);
         
@@ -1721,7 +1495,7 @@ int main(int argc, char* argv[]) {
     int fullmove_number = stoi(argv[6]); // Fullmove number
     BoardState boardState = fen_to_board(pieces, en_passant, active_color, castling_rights);
     // string fen = pieces + ' ' + active_color + ' ' + castling_rights + ' ' + en_passant + ' ' + argv[5] + ' ' + argv[6];
-    cout << choose_best_move(boardState, 2);
+    cout << choose_best_move(boardState, 0);
     // cout << "evaluations: " << test;
     return 0;
 }
