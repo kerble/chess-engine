@@ -1495,7 +1495,7 @@ int main(int argc, char* argv[]) {
     int fullmove_number = stoi(argv[6]); // Fullmove number
     BoardState boardState = fen_to_board(pieces, en_passant, active_color, castling_rights);
     // string fen = pieces + ' ' + active_color + ' ' + castling_rights + ' ' + en_passant + ' ' + argv[5] + ' ' + argv[6];
-    cout << choose_best_move(boardState, 0);
+    cout << choose_best_move(boardState, 2);
     // cout << "evaluations: " << test;
     return 0;
 }
