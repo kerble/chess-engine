@@ -458,7 +458,6 @@ class Screen:
 
         self.board_state = "ongoing" #Can be stalemate or checkmate
 
-    # I'm going to see a feature. A creature feature. Featuring: The creature.
     def handle_moves(self, player_side, square_to_move_to, halfmove, fullmove):
         # Handle player's move (if it's the player's turn)
         if self.selected_piece_original_position and square_to_move_to != (-1, -1) and self.is_white_turn == (player_side == 'white'):
@@ -477,6 +476,11 @@ class Screen:
                 move += promotion_piece
                 if promotion_piece == '.':
                     return ""
+            self.clear_buffer()
+            self.draw_board(self.buffer)
+            self.highlight_squares(self.buffer)
+            self.draw_pieces(self.buffer)
+            self.update_display()
             return move
 
         # Handle engine's move (if it's engine's turn)
@@ -1269,9 +1273,9 @@ def main():
     # starting_position = "k..q............................................PPP.....R...U..."
     # starting_position = ".r.r.k...ppbqp.Qp.n.p......pP.Np...P...PP.....R..PP..PP..K.R...."
     # starting_position = "r.bqw..rp....p.p.pp..b........................Q.PP.P.PPPR.B.W.NR"
-    # starting_position = "k.........KP...................................................."
     # starting_position = "r....rk.p.pp.p.......n.p......p..N.......PPQPP...P...P..R...W.R."
     starting_position = "rnbqwbnrpppppppp................................PPPPPPPPRNBQWBNR"
+    starting_position = "k.........KP...................................................."
 
     screen.board_as_list = set_board_from_string(starting_position)
 
