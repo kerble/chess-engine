@@ -615,8 +615,8 @@ public:
 
                     // Check if enemyPieceVision includes any of the squares involved in queenside castling
                     if (enemyPieceVision.find(getPosition()) != enemyPieceVision.end() ||
-                        enemyPieceVision.find(getPosition() + 1) != enemyPieceVision.end() ||
-                        enemyPieceVision.find(getPosition() + 2) != enemyPieceVision.end()) {
+                        enemyPieceVision.find(getPosition() - 1) != enemyPieceVision.end() ||
+                        enemyPieceVision.find(getPosition() - 2) != enemyPieceVision.end()) {
                         delete enemyPiece; // Don't forget to delete the created piece object
                         return false;
                     }

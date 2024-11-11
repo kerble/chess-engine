@@ -2,10 +2,8 @@ from os import environ
 environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame
 import subprocess
-# import os
+import argparse
 import copy
-# import msvcrt
-# import time
 
 #TODO: add king "capturing" its own rook-looking syntax for castling
 #TODO: don't highlight the square of the last moved piece's to_location if it is in the valid squares of a selected piece
@@ -68,7 +66,7 @@ def create_piece_from_char(char, position):
         king.has_queenside_castling_rights = True
         king.has_kingside_castling_rights = False
         return king
-    elif char == 'u': #u denoets a black king with only queenside castling rights.
+    elif char == 'u': #u denotes a black king with only queenside castling rights.
         king = King("black", position)
         king.has_queenside_castling_rights = True
         king.has_kingside_castling_rights = False
@@ -78,7 +76,7 @@ def create_piece_from_char(char, position):
         king.has_queenside_castling_rights = True
         king.has_kingside_castling_rights = True
         return king
-    elif char == 'w': #w denoets a black king with full castling rights.
+    elif char == 'w': #w denotes a black king with full castling rights.
         king = King("black", position)
         king.has_queenside_castling_rights = True
         king.has_kingside_castling_rights = True
@@ -495,13 +493,13 @@ class Screen:
                     promotion_piece = response[4]
                     self.board_as_list[row][col] = promotion_piece
                 self.board_state = self.play_move(from_coord, to_coord)
-            return response
+                return response
         return ""
     
 
-    def run(self):
+    def run(self, player_side):
         # Hardcoded player side (replace with actual UI choice later)
-        player_side = 'white'  # 'white' or 'black'
+        # player_side = 'white'  # 'white' or 'black'
         square_to_move_to = (-1, -1)
         fullmove = 1  # Incremented after black moves
         halfmove = 0  # Half moves since a capture/pawn move (for fifty-move rule)
@@ -513,6 +511,9 @@ class Screen:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE and self.board_state != "ongoing":
+                        self.running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         square_to_move_to = self.handle_mouse_button_down(event)
@@ -528,16 +529,16 @@ class Screen:
             self.highlight_squares(self.buffer)
             self.draw_pieces(self.buffer)
             self.blit_selected_piece()
-            self.update_display()
 
             # Handle player and engine moves
             move = self.handle_moves(player_side, square_to_move_to, halfmove, fullmove)
             if move != "":
                 moves += [move]
 
+            self.update_display()
             # Check game state
-            if self.board_state != "ongoing":
-                self.running = False
+            # if self.board_state != "ongoing":
+                # self.running = False
 
         command = ["python", "uci_to_pgn.py"] + moves  # List: command + arguments
 
@@ -724,7 +725,7 @@ class Screen:
                     return promotion_map.get(self.selected_promotion_piece[0], None)
         self.shouldShowPromotionInterface = True
         #TODO: fix the screen jitteryness when queening
-        self.update_display()
+        # self.update_display()
         return '' #Code for continue showing the interface
 
 
@@ -732,32 +733,33 @@ class Screen:
         move_piece(self.board_as_list, from_pos, to_pos)
 
         
-        self.is_white_turn = not self.is_white_turn
-        self.white_is_in_check = True if("white_in_check" == look_for_check(self.board_as_list)) else False
-        self.black_is_in_check = True if("black_in_check" == look_for_check(self.board_as_list)) else False
 
         # print(f"is white's turn? {self.is_white_turn}")
         # print(f"is black in check? {self.black_is_in_check}")
         # print(f"no legal moves? {self.no_legal_moves(self.board_as_list)}")
         # print_board(self.board_as_list)
-        no_legal_moves = self.no_legal_moves(self.board_as_list)
-        if self.is_white_turn and self.white_is_in_check and no_legal_moves:
-            print("Checkmate. Black wins.")
-            return "Checkmate."
-        elif not self.is_white_turn and self.black_is_in_check and no_legal_moves:
-            print("Checkmate. White wins.")
-            return "Checkmate."
-        if self.is_white_turn and not self.white_is_in_check and no_legal_moves:
-            print("Stalemate. Draw.")
-            return "Stalemate."
-        elif not self.is_white_turn and not self.black_is_in_check and no_legal_moves:
-            print("Stalemate. Draw.")
-            return "Stalemate."
         
         #Write down the squares we moved from and to before we clear it so we can highlight them.
         self.last_moved_piece_original_position = from_pos
         self.last_moved_piece_current_position = to_pos
         self.deselect_piece()
+
+        self.is_white_turn = not self.is_white_turn
+        self.white_is_in_check = True if("white_in_check" == look_for_check(self.board_as_list)) else False
+        self.black_is_in_check = True if("black_in_check" == look_for_check(self.board_as_list)) else False
+        no_legal_moves = self.no_legal_moves(self.board_as_list)
+        if self.is_white_turn and self.white_is_in_check and no_legal_moves:
+            print("Checkmate. Black wins. Hit escape to get the PGN and close the window.")
+            return "Checkmate."
+        elif not self.is_white_turn and self.black_is_in_check and no_legal_moves:
+            print("Checkmate. White wins. Hit escape to get the PGN and close the window.")
+            return "Checkmate."
+        if self.is_white_turn and not self.white_is_in_check and no_legal_moves:
+            print("Stalemate. Draw. Hit escape to get the PGN and close the window.")
+            return "Stalemate."
+        elif not self.is_white_turn and not self.black_is_in_check and no_legal_moves:
+            print("Stalemate. Draw. Hit escape to get the PGN and close the window.")
+            return "Stalemate."
         return "ongoing"
 
     def no_legal_moves(self, board):
@@ -1209,7 +1211,7 @@ class King(Piece):
         if(not in_check_now): #Can check for castling rights now
             #Check kingside castling
             path_is_empty = board[default_row][5] == '.' and board[default_row][6] == '.'
-            path_is_safe = board[default_row][4] not in enemy_vision and board[default_row][5] not in enemy_vision and board[default_row][6] not in enemy_vision
+            path_is_safe = (default_row, 4) not in enemy_vision and (default_row, 5) not in enemy_vision and (default_row, 6) not in enemy_vision
             rook_is_there = True if board[rook_row][7] == rook_char else False
             hypothetical_board = simulate_move(board, self.position, (default_row, 6))
             check = look_for_check(hypothetical_board)
@@ -1220,7 +1222,8 @@ class King(Piece):
             
             #Check queenside castling
             path_is_empty = board[default_row][1] == '.' and board[default_row][2] == '.' and board[default_row][3] == '.'
-            path_is_safe = board[default_row][2] not in enemy_vision and board[default_row][3] not in enemy_vision and board[default_row][4] not in enemy_vision
+            path_is_safe = (default_row, 2) not in enemy_vision and (default_row, 3) not in enemy_vision and (default_row, 4) not in enemy_vision
+
             rook_is_there = True if board[rook_row][0] == rook_char else False
             hypothetical_board = simulate_move(board, self.position, (default_row, 2))
             check = look_for_check(hypothetical_board)
@@ -1249,19 +1252,31 @@ class King(Piece):
             else:
                 valid_moves.append(new_position)
         return valid_moves
+def main():
+    # Set up command line argument parsing
+    parser = argparse.ArgumentParser(description="Run the chess game with a specified player side.")
+    parser.add_argument("player_side", choices=["white", "black"], help="Choose 'white' or 'black' as the player side")
+    args = parser.parse_args()
 
-screen = Screen(480, 480)
-starting_position = "rnbqwbnrpppppppp................................PPPPPPPPRNBQWBNR"
-# starting_position = "r...k..rppp.pppp..n......Bp...........b.BP..qN..P.PP..PPRN..K..R"
-# starting_position = "r....rk.pp...ppp.pp.......B..............P..PPR.PBP....P..K....."
-# starting_position = "r...w.......r...............................................W..R"
-# starting_position = "k.........K............................................p........"
-# starting_position = "...r...kppp....p..b..p.....p.......Q.pR.P.B......PP..PPP....R.K."
-# starting_position = "k............................................................rKR"
-# starting_position = "k..q............................................PPP.....R...U..."
-# starting_position = ".r.r.k...ppbqp.Qp.n.p......pP.Np...P...PP.....R..PP..PP..K.R...."
-# starting_position = "r.bqw..rp....p.p.pp..b........................Q.PP.P.PPPR.B.W.NR"
-# starting_position = "k.........KP...................................................."
-# starting_position = "r....rk.p.pp.p.......n.p......p..N.......PPQPP...P...P..R...W.R."
-screen.board_as_list = set_board_from_string(starting_position)
-screen.run()
+    # Create the screen object and set up the board
+    screen = Screen(480, 480)
+    # starting_position = "r...k..rppp.pppp..n......Bp...........b.BP..qN..P.PP..PPRN..K..R"
+    # starting_position = "r....rk.pp...ppp.pp.......B..............P..PPR.PBP....P..K....."
+    # starting_position = "r...w.......r...............................................W..R"
+    # starting_position = "k.........K............................................p........"
+    # starting_position = "...r...kppp....p..b..p.....p.......Q.pR.P.B......PP..PPP....R.K."
+    # starting_position = "k............................................................rKR"
+    # starting_position = "k..q............................................PPP.....R...U..."
+    # starting_position = ".r.r.k...ppbqp.Qp.n.p......pP.Np...P...PP.....R..PP..PP..K.R...."
+    # starting_position = "r.bqw..rp....p.p.pp..b........................Q.PP.P.PPPR.B.W.NR"
+    # starting_position = "k.........KP...................................................."
+    # starting_position = "r....rk.p.pp.p.......n.p......p..N.......PPQPP...P...P..R...W.R."
+    starting_position = "rnbqwbnrpppppppp................................PPPPPPPPRNBQWBNR"
+
+    screen.board_as_list = set_board_from_string(starting_position)
+
+    # Pass the player side to the run method
+    screen.run(args.player_side)
+
+if __name__ == "__main__":
+    main()

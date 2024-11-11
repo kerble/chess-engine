@@ -4,10 +4,10 @@ import chess
 import subprocess
 
 # Load the API key from the config.json file
-with open('config.json') as config_file:
+with open('api_key.json') as config_file:
     config = json.load(config_file)
     API_TOKEN = config["API_KEY"]
-    
+
 headers = {
     "Authorization": f"Bearer {API_TOKEN}",
     "Content-Type": "application/json"
