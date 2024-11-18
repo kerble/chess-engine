@@ -10,6 +10,41 @@ import copy
 # Define colors
 WHITE = (240, 217, 181)
 BLACK = (181, 136, 99)
+def insufficient_material(board):
+    """
+    Determines if the game is drawn due to insufficient material.
+
+    :param board: A 2D list representing the chessboard, where each character represents a piece.
+                  Empty squares are represented by '.' or similar non-piece characters.
+    :return: True if the game should be drawn due to insufficient material, False otherwise.
+    """
+    pieces = [piece for row in board for piece in row if piece.isalpha()]  # Flatten board and filter pieces
+
+    # Ensure kings exist
+    if 'K' not in pieces or 'k' not in pieces:
+        return False
+
+    # Remove kings from the list for further checks
+    pieces = [piece for piece in pieces if piece.lower() != 'k']
+
+    if not pieces:
+        # King vs King
+        return True
+
+    if len(pieces) == 1:
+        # King and one minor piece vs King
+        return pieces[0].lower() in ('b', 'n')
+
+    if len(pieces) == 2:
+        # King and bishop vs King and bishop of the same color
+        bishops = [piece for piece in pieces if piece.lower() == 'b']
+        if len(bishops) == 2:
+            # Determine bishop square colors (black or white squares based on their position)
+            bishop_positions = [(i, j) for i, row in enumerate(board) for j, piece in enumerate(row) if piece.lower() == 'b']
+            bishop_colors = [(i + j) % 2 for i, j in bishop_positions]
+            return bishop_colors[0] == bishop_colors[1]  # Same color bishops
+
+    return False
 
 def get_piece_image(piece):
     # Load piece image based on piece name (e.g., "Wp" for white pawn)
@@ -428,7 +463,9 @@ class Screen:
         self.square_size = screen_width // 8  # Size of each square
         self.board = "" #TODO: fix later
         self.board_as_list = [] #TODO: Make this work off of string boards instead of list boards.
-        self.waiting_for_promotion = False
+        self.halfmove = 0  # Number of half-moves since last capture or pawn move
+        self.fullmove = 1  # Incremented after Black's move
+        self.fen_positions = {}  # Dictionary to track FEN positions and their occurrences
         pygame.init()
 
         # Create a Pygame window
@@ -458,14 +495,12 @@ class Screen:
 
         self.board_state = "ongoing" #Can be stalemate or checkmate
 
-    def handle_moves(self, player_side, square_to_move_to, halfmove, fullmove):
+    def handle_moves(self, player_side, square_to_move_to):
+
         # Handle player's move (if it's the player's turn)
         if self.selected_piece_original_position and square_to_move_to != (-1, -1) and self.is_white_turn == (player_side == 'white'):
-            capture, pawn_move = self.check_halfmove(square_to_move_to)
+            capture, pawn_move = self.check_halfmove(self.selected_piece_original_position, square_to_move_to)
             
-            # Reset halfmove counter on capture or pawn move
-            halfmove = 0 if capture or pawn_move else halfmove + 1
-
             back_rank = 0 if player_side == 'white' else 7
             # Play the move, check for promotion
             move = coordinate_to_algebraic(self.selected_piece_original_position) + coordinate_to_algebraic(square_to_move_to)
@@ -481,32 +516,47 @@ class Screen:
             self.highlight_squares(self.buffer)
             self.draw_pieces(self.buffer)
             self.update_display()
+            if capture:
+                capture_sound = pygame.mixer.Sound('./sounds/Capture.ogg')
+                capture_sound.play()
+            else:
+                move_sound = pygame.mixer.Sound('./sounds/Move.ogg')
+                move_sound.play()
             return move
 
         # Handle engine's move (if it's engine's turn)
         if self.board_state == "ongoing" and self.is_white_turn != (player_side == 'white'):
-            fen = self.generate_fen_string(halfmove, fullmove)
+            fen = self.generate_fen_string(self.halfmove, self.fullmove)
+            print(fen)
             response = consult_engine(fen)
             if response:
                 from_coord, to_coord = split_algebraic(response)
-                row = from_coord[0]
-                col = from_coord[1]
+                frow = from_coord[0]
+                fcol = from_coord[1]
+                trow = to_coord[0]
+                tcol = to_coord[1]
+                # Load sounds
+                capture = True if self.board_as_list[trow][tcol] != "." else False
+                move_sound = pygame.mixer.Sound('./sounds/Move.ogg')  # Replace with your move sound file path
+                capture_sound = pygame.mixer.Sound('./sounds/Capture.ogg')  # Replace with your capture sound file path
+                # Play sound when a move is made
+                if capture:
+                    capture_sound.play()
+                else:
+                    move_sound.play()
 
                 promotion_piece = ''
                 if len(response) == 5:
                     promotion_piece = response[4]
-                    self.board_as_list[row][col] = promotion_piece
+                    self.board_as_list[frow][fcol] = promotion_piece
                 self.board_state = self.play_move(from_coord, to_coord)
+
                 return response
         return ""
     
 
     def run(self, player_side):
-        # Hardcoded player side (replace with actual UI choice later)
-        # player_side = 'white'  # 'white' or 'black'
         square_to_move_to = (-1, -1)
-        fullmove = 1  # Incremented after black moves
-        halfmove = 0  # Half moves since a capture/pawn move (for fifty-move rule)
 
         moves = []
 
@@ -535,7 +585,7 @@ class Screen:
             self.blit_selected_piece()
 
             # Handle player and engine moves
-            move = self.handle_moves(player_side, square_to_move_to, halfmove, fullmove)
+            move = self.handle_moves(player_side, square_to_move_to)
             if move != "":
                 moves += [move]
 
@@ -557,10 +607,10 @@ class Screen:
         
 
 
-    def check_halfmove(self, square_to_move_to):
+    def check_halfmove(self, from_square, to_square):
         """Handle user's move, check if it's a capture or pawn move."""
-        row, col = square_to_move_to
-        frow, fcol = self.selected_piece_original_position
+        row, col = to_square
+        frow, fcol = from_square
         capture = self.board_as_list[row][col] != '.'
         pawn_move = self.board_as_list[frow][fcol].lower() == 'p'
 
@@ -592,9 +642,6 @@ class Screen:
         color = 'w' if self.is_white_turn else 'b'
         castling_string = generate_castling_rights(self.board_as_list)
         en_passant_square = find_en_passant_square(self.board_as_list)
-
-        if not self.is_white_turn:
-            fullmove += 1
 
         return generate_fen(self.board_as_list, active_color=color, castling=castling_string, en_passant=en_passant_square, halfmove=halfmove, fullmove=fullmove)
 
@@ -734,15 +781,36 @@ class Screen:
 
 
     def play_move(self, from_pos, to_pos):
+        frow = from_pos[0]
+        fcol = from_pos[1]
+        if(self.board_as_list[frow][fcol].islower()): #Black just moved a piece
+            self.fullmove += 1
+        capture, pawn_move = self.check_halfmove(from_pos, to_pos)
+        if capture or pawn_move:
+            self.halfmove = 0
+        else:
+            self.halfmove += 1
+
         move_piece(self.board_as_list, from_pos, to_pos)
 
-        
+        #Make a new fen for this new position, with -1 being the halfmove counter and full move counter
+        #because this fen is only used to go into the table of seen positions
+        color = 'w' if self.is_white_turn else 'b'
+        castling_string = generate_castling_rights(self.board_as_list)
+        en_passant_square = find_en_passant_square(self.board_as_list)
 
-        # print(f"is white's turn? {self.is_white_turn}")
-        # print(f"is black in check? {self.black_is_in_check}")
-        # print(f"no legal moves? {self.no_legal_moves(self.board_as_list)}")
-        # print_board(self.board_as_list)
-        
+        fen = generate_fen(self.board_as_list, color, castling_string, en_passant_square, -1, -1)
+        # Update the map with the FEN position
+        if fen in self.fen_positions:
+            self.fen_positions[fen] += 1
+        else:
+            self.fen_positions[fen] = 1
+
+        # Check for threefold repetition
+        if self.fen_positions[fen] >= 3:
+            print("Draw due to three-fold repetition")
+            print("Hit escape to get the PGN and close the window.")
+            return "Draw."
         #Write down the squares we moved from and to before we clear it so we can highlight them.
         self.last_moved_piece_original_position = from_pos
         self.last_moved_piece_current_position = to_pos
@@ -752,6 +820,13 @@ class Screen:
         self.white_is_in_check = True if("white_in_check" == look_for_check(self.board_as_list)) else False
         self.black_is_in_check = True if("black_in_check" == look_for_check(self.board_as_list)) else False
         no_legal_moves = self.no_legal_moves(self.board_as_list)
+        if(self.halfmove >= 100):
+            print("Draw due to 50 move rule, 100 half moves have been played without capturing a piece or moving a pawn.")
+            print("Hit escape to get the PGN and close the window.")
+            return "Draw."
+        if(insufficient_material(self.board_as_list)):
+            print("Draw due to insufficient material. Hit escape to get the PGN and close the window.")
+            return "Draw."
         if self.is_white_turn and self.white_is_in_check and no_legal_moves:
             print("Checkmate. Black wins. Hit escape to get the PGN and close the window.")
             return "Checkmate."
@@ -759,10 +834,10 @@ class Screen:
             print("Checkmate. White wins. Hit escape to get the PGN and close the window.")
             return "Checkmate."
         if self.is_white_turn and not self.white_is_in_check and no_legal_moves:
-            print("Stalemate. Draw. Hit escape to get the PGN and close the window.")
+            print("Stalemate. Hit escape to get the PGN and close the window.")
             return "Stalemate."
         elif not self.is_white_turn and not self.black_is_in_check and no_legal_moves:
-            print("Stalemate. Draw. Hit escape to get the PGN and close the window.")
+            print("Stalemate. Hit escape to get the PGN and close the window.")
             return "Stalemate."
         return "ongoing"
 
@@ -1267,15 +1342,16 @@ def main():
     # starting_position = "r...k..rppp.pppp..n......Bp...........b.BP..qN..P.PP..PPRN..K..R"
     # starting_position = "r....rk.pp...ppp.pp.......B..............P..PPR.PBP....P..K....."
     # starting_position = "r...w.......r...............................................W..R"
-    # starting_position = "k.........K............................................p........"
     # starting_position = "...r...kppp....p..b..p.....p.......Q.pR.P.B......PP..PPP....R.K."
     # starting_position = "k............................................................rKR"
     # starting_position = "k..q............................................PPP.....R...U..."
     # starting_position = ".r.r.k...ppbqp.Qp.n.p......pP.Np...P...PP.....R..PP..PP..K.R...."
     # starting_position = "r.bqw..rp....p.p.pp..b........................Q.PP.P.PPPR.B.W.NR"
     # starting_position = "r....rk.p.pp.p.......n.p......p..N.......PPQPP...P...P..R...W.R."
+    # starting_position = "k.........KP...................................................."
+    # starting_position = "..b..........k..p...........................................KB.."
     starting_position = "rnbqwbnrpppppppp................................PPPPPPPPRNBQWBNR"
-    starting_position = "k.........KP...................................................."
+    starting_position = "k...........p.........................................K........."
 
     screen.board_as_list = set_board_from_string(starting_position)
 
