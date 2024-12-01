@@ -128,77 +128,70 @@ int parseCastlingRights(const std::string& rights) {
 }
 
 std::ostream& operator<<(std::ostream& os, const BoardState& board) {
-    // Initialize an empty 2D array to represent the board
-    char boardVisual[8][8] = {
-        {'.', '.', '.', '.', '.', '.', '.', '.'}, {'.', '.', '.', '.', '.', '.', '.', '.'},
-        {'.', '.', '.', '.', '.', '.', '.', '.'}, {'.', '.', '.', '.', '.', '.', '.', '.'},
-        {'.', '.', '.', '.', '.', '.', '.', '.'}, {'.', '.', '.', '.', '.', '.', '.', '.'},
-        {'.', '.', '.', '.', '.', '.', '.', '.'}, {'.', '.', '.', '.', '.', '.', '.', '.'}};
+    // Display the board
+    for (int rank = 7; rank >= 0; --rank) {
+        for (int file = 0; file < 8; ++file) {
+            int square = rank * 8 + file;
+            char pieceChar = '.';  // Default empty square
 
-    // Loop through each piece type and populate the boardVisual
-    for (int i = 0; i < 12; ++i) {
-        uint64_t bitboard = board.getBitboard(i);
-        for (int square = 0; square < 64; ++square) {
-            if (bitboard & (1ULL << square)) {
-                // Determine the piece character for the current bitboard index
-                char pieceChar;
-                switch (i) {
-                    case WHITE_PAWNS:
-                        pieceChar = 'P';
-                        break;
-                    case WHITE_KNIGHTS:
-                        pieceChar = 'N';
-                        break;
-                    case WHITE_BISHOPS:
-                        pieceChar = 'B';
-                        break;
-                    case WHITE_ROOKS:
-                        pieceChar = 'R';
-                        break;
-                    case WHITE_QUEENS:
-                        pieceChar = 'Q';
-                        break;
-                    case WHITE_KINGS:
-                        pieceChar = 'K';
-                        break;
-                    case BLACK_PAWNS:
-                        pieceChar = 'p';
-                        break;
-                    case BLACK_KNIGHTS:
-                        pieceChar = 'n';
-                        break;
-                    case BLACK_BISHOPS:
-                        pieceChar = 'b';
-                        break;
-                    case BLACK_ROOKS:
-                        pieceChar = 'r';
-                        break;
-                    case BLACK_QUEENS:
-                        pieceChar = 'q';
-                        break;
-                    case BLACK_KINGS:
-                        pieceChar = 'k';
-                        break;
-                    default:
-                        pieceChar = '.';
-                        break;  // Default case (should not occur)
+            // Check each piece bitboard to determine what is on this square
+            for (int i = 0; i < 12; ++i) {
+                if (board.getBitboard(i) & (1ULL << square)) {
+                    switch (i % 6) {
+                        case 0:
+                            pieceChar = 'P';
+                            break;  // Pawns
+                        case 1:
+                            pieceChar = 'N';
+                            break;  // Knights
+                        case 2:
+                            pieceChar = 'B';
+                            break;  // Bishops
+                        case 3:
+                            pieceChar = 'R';
+                            break;  // Rooks
+                        case 4:
+                            pieceChar = 'Q';
+                            break;  // Queens
+                        case 5:
+                            pieceChar = 'K';
+                            break;  // Kings
+                    }
+                    if (i >= 6) pieceChar = tolower(pieceChar);  // Black pieces
+                    break;
                 }
-
-                // Map square to the correct visual board position
-                int row = square / 8;  // No inversion here
-                int col = square % 8;
-                boardVisual[row][col] = pieceChar;
             }
+
+            os << pieceChar;
         }
+        os << '\n';
     }
 
-    // Output the visual representation of the board (print rows from A8 to H1)
-    for (int row = 7; row >= 0; --row) {  // Reverse row order for display
-        for (int col = 0; col < 8; ++col) {
-            os << boardVisual[row][col];
-        }
-        os << std::endl;  // End each rank
+    // Display castling rights
+    int castlingRights = board.getCastlingRights();
+    os << "Castling rights: ";
+    if (castlingRights & 0x1) os << 'K';     // White kingside
+    if (castlingRights & 0x2) os << 'Q';     // White queenside
+    if (castlingRights & 0x4) os << 'k';     // Black kingside
+    if (castlingRights & 0x8) os << 'q';     // Black queenside
+    if (!(castlingRights & 0xF)) os << '-';  // No castling rights
+    os << '\n';
+
+    // Display halfmove counter
+    os << "Halfmove counter: " << board.getHalfmoveClock() << '\n';
+
+    // Display fullmove counter
+    os << "Fullmove counter: " << board.getMoveCounter() << '\n';
+
+    // Display en passant target square
+    int epSquare = board.getEnPassant();
+    os << "En passant target square: ";
+    if (epSquare != NO_EN_PASSANT) {
+        os << algebraicFromSquare(epSquare);
+    } else {
+        os << '-';
     }
+    os << '\n';
 
     return os;
 }
@@ -253,7 +246,19 @@ void BoardState::updateBitboard(int pieceType, uint64_t newBitboard) {
         throw std::invalid_argument("Invalid pieceType in updateBitboard");
         return;
     }
-    bitboards[pieceType] = newBitboard;
+
+    uint64_t oldBitboard = bitboards[pieceType];  // Store the old bitboard
+    bitboards[pieceType] = newBitboard;           // Update the piece's bitboard
+
+    // Update the occupancy bitboards based on the difference in bitboards
+    if (pieceType < 6) {                                     // White piece
+        white_occupancy ^= oldBitboard;  // Remove old
+        white_occupancy |= newBitboard;  // Add new
+    } else {                                                 // Black piece
+        black_occupancy ^= oldBitboard;  // Remove old
+        black_occupancy |= newBitboard;  // Add new
+    }
+    updateOccupancy();
 }
 
 // Get the bitboard for a specific piece type
@@ -266,7 +271,9 @@ uint64_t BoardState::getBitboard(int pieceType) const {
 }
 
 // Set castling rights using a bitmask
-void BoardState::setCastlingRights(uint64_t rights) { castling_rights = rights; }
+void BoardState::setCastlingRights(uint8_t rights) { castling_rights = rights; }
+
+void BoardState::setEnPassant(uint8_t square){ en_passant_square = square; }
 
 // Check kingside Castling
 bool BoardState::canCastleKingside(bool isWhite) const {
@@ -286,14 +293,11 @@ bool BoardState::canCastleQueenside(bool isWhite) const {
     }
 }
 
-// Set the en passant square (only one square can be en passant at a time)
-void BoardState::setEnPassant(uint64_t square) {
-    en_passant_square = square;  // Directly set the en passant square (0-63)
-}
-
 // Get the en passant square (returns the square where en passant is possible, 0-63)
-uint64_t BoardState::getEnPassant() const { return en_passant_square; }
-
+// NO_EN_PASSANT if not possible
+uint8_t BoardState::getEnPassant() const { return en_passant_square; }
+int BoardState::getMoveCounter() const { return fullmove_number; }
+uint8_t BoardState::getCastlingRights() const { return castling_rights; }
 // Set the turn (true = white's turn, false = black's turn)
 void BoardState::setTurn(bool isWhiteTurn) { is_white_turn = isWhiteTurn; }
 

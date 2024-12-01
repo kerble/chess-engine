@@ -3,64 +3,9 @@
 #include "main.hpp"
 #include "bitboard.hpp"
 #include "movegen.hpp"
+#include "evaluate.hpp"
 using namespace std; 
 
-
-// BoardState parseFEN(const string& fen) {
-//     BoardState board;
-//     istringstream fenStream(fen);
-//     string piecePlacement, sideToMove, castlingRights, enPassant;
-//     int halfmoveClock, fullmoveNumber;
-
-//     fenStream >> piecePlacement >> sideToMove >> castlingRights >> enPassant >> halfmoveClock >> fullmoveNumber;
-
-//     for (int i = 0; i < 12; ++i) {
-//         board.updateBitboard(i, 0);
-//     }
-
-//     int square = 56; // Start from bottom-left (a1), which is bit 0
-//     for (char ch : piecePlacement) {
-//         if (isdigit(ch)) {
-//             square += (ch - '0'); // Skip empty squares
-//         } else if (ch == '/') {
-//             square -= 16; // Move to the next rank (up one row in FEN, down in bitboard)
-//         } else {
-//             int pieceType = charToPieceIndex(ch);
-//             uint64_t currentBitboard = board.getBitboard(pieceType);
-
-//             // Debug: Print current state before adding piece
-//             // std::cout << "Adding piece " << ch << " at square #" << square
-//                     // << " AKA " << algebraicFromSquare(square) << '\n';
-//             // std::cout << "Bitboard before:\n" << bitboardToBinaryString(currentBitboard) << '\n';
-
-//             // Add the piece to the bitboard
-//             uint64_t newBitboard = set_bit(currentBitboard, square);
-//             board.updateBitboard(pieceType, newBitboard);
-
-//             // Debug: Print new state after adding piece
-//             // std::cout << "Bitboard after:\n" << bitboardToBinaryString(newBitboard) << '\n';
-
-//             square++;
-//         }
-//     }
-
-
-
-//     // Parse side to move
-//     board.setTurn(sideToMove == "w");
-
-//     // Parse castling rights
-//     uint64_t castling = parseCastlingRights(castlingRights);
-//     board.setCastlingRights(castling);
-
-//     // Parse en passant square
-//     uint64_t enPassantSq = (enPassant == "-") ? 0 : squareFromAlgebraic(enPassant);
-//     board.setEnPassant(enPassantSq);
-
-//     // Parse move counters
-//     board.setMoveCounters(halfmoveClock, fullmoveNumber);
-//     return board;
-// }
 
 BoardState parseFEN(const std::string& fen) {
     BoardState board;
@@ -113,7 +58,7 @@ BoardState parseFEN(const std::string& fen) {
     board.setCastlingRights(castling);
 
     // Parse en passant square
-    uint64_t enPassantSq = (enPassant == "-") ? 0 : squareFromAlgebraic(enPassant);
+    int enPassantSq = (enPassant == "-") ? NO_EN_PASSANT : squareFromAlgebraic(enPassant);
     board.setEnPassant(enPassantSq);
 
     // Parse move counters
@@ -297,10 +242,29 @@ int main(int argc, char* argv[]) {
     // cout << bitboardToBinaryString(pinMask2) << endl;
     // cout << bitboardToBinaryString(pinMask3) << endl;
     vector<uint16_t> legalMoves = allLegalMoves(board);
+    int i = 1;
     for(auto move : legalMoves){ 
-        cout << moveToString(move) << endl;
+        cout << i << ": " << moveToString(move) << endl;
+        i++;
     }
+
+    // Ask the user to pick a move
+    int choice;
+    std::cout << "Enter the number of the move to play: ";
+    std::cin >> choice;
+
+    if (choice < 1 || choice > legalMoves.size()) {
+        std::cout << "Invalid choice.\n";
+        return 1;
+    }
+
+    // Apply the chosen move
+    MoveUndo undoState;
+    uint16_t move = legalMoves[choice - 1];
+    undoState = applyMove(board, move);
+
+    // Print the updated board state
+    std::cout << "Updated board:\n" << board << std::endl;
+
     return 0;
-
-
 }

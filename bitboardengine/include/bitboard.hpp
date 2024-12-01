@@ -23,6 +23,8 @@ enum PieceIndex {
     BLACK_KINGS = 11
 };
 
+constexpr int NO_EN_PASSANT = 64;
+
 // Bit manipulation functions
 uint64_t set_bit(uint64_t bitboard, int square);
 uint64_t clear_bit(uint64_t bitboard, int square);
@@ -51,8 +53,8 @@ private:
     uint64_t white_occupancy;
     uint64_t black_occupancy;
     uint64_t all_occupancy;
-    uint64_t en_passant_square;
-    uint64_t castling_rights; // maybe bitfield for each castling right
+    uint8_t en_passant_square;
+    uint8_t castling_rights; // maybe bitfield for each castling right
     bool is_white_turn;
     int halfmove_clock;
     int fullmove_number;
@@ -67,12 +69,13 @@ public:
     uint64_t getBitboard(int pieceType) const;
 
     // Methods to update and check game state (castling, en-passant, etc.)
-    void setCastlingRights(uint64_t rights);
+    void setCastlingRights(uint8_t rights);
+    uint8_t getCastlingRights() const;
     bool canCastleKingside(bool isWhite) const;
     bool canCastleQueenside(bool isWhite) const;
-
-    void setEnPassant(uint64_t square);
-    uint64_t getEnPassant() const;
+    int getMoveCounter() const;
+    void setEnPassant(uint8_t square);
+    uint8_t getEnPassant() const;
 
     void setTurn(bool isWhiteTurn);
     bool getTurn() const;

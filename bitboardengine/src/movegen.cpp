@@ -15,56 +15,52 @@ inline int popLSB(uint64_t& bitboard) {
 /*
 Bits [0-5]: fromSquare
 Bits [6-11]: toSquare
-Bits [12-15]: Promotion type ('q', 'r', 'b', 'n')
+Bits [12-15]: Castling or en passant.
 */
-static uint16_t encodeMove(int fromSquare, int toSquare, char promotion = '\0') {
-    int promoCode = 0;  // Default: no promotion
-    if (promotion == 'q')
-        promoCode = 1;
-    else if (promotion == 'r')
-        promoCode = 2;
-    else if (promotion == 'b')
-        promoCode = 3;
-    else if (promotion == 'n')
-        promoCode = 4;
-
-    return (fromSquare & 0x3F) | ((toSquare & 0x3F) << 6) | (promoCode << 12);
+uint16_t encodeMove(int fromSquare, int toSquare, int special = SPECIAL_NONE) {
+    return (fromSquare & 0x3F) | ((toSquare & 0x3F) << 6) | (special << 12);
 }
 
-/*
-Bits [0-5]: fromSquare
-Bits [6-11]: toSquare
-Bits [12-15]: Promotion type ('q', 'r', 'b', 'n')
-*/
-static void decodeMove(uint16_t move, int& fromSquare, int& toSquare, char& promotion) {
-    fromSquare = move & 0x3F;            // Extract bits [0-5]
-    toSquare = (move >> 6) & 0x3F;       // Extract bits [6-11]
-    int promoCode = (move >> 12) & 0xF;  // Extract bits [12-15]
-
-    // Map promotion code back to character
-    promotion = '\0';  // Default: no promotion
-    if (promoCode == 1)
-        promotion = 'q';
-    else if (promoCode == 2)
-        promotion = 'r';
-    else if (promoCode == 3)
-        promotion = 'b';
-    else if (promoCode == 4)
-        promotion = 'n';
+void decodeMove(uint16_t move, int& fromSquare, int& toSquare, int& special) {
+    fromSquare = move & 0x3F;       // Extract bits [0-5]
+    toSquare = (move >> 6) & 0x3F;  // Extract bits [6-11]
+    special = (move >> 12) & 0xF;   // Extract bits [12-15]
 }
 
 // Convert uint16_t move to string representation
 std::string moveToString(uint16_t move) {
     int fromSquare, toSquare;
-    char promotion;
-    decodeMove(move, fromSquare, toSquare, promotion);
+    int special;
+    decodeMove(move, fromSquare, toSquare, special);
 
     std::ostringstream moveString;
     moveString << algebraicFromSquare(fromSquare) << algebraicFromSquare(toSquare);
 
-    // Append promotion character if it exists
-    if (promotion != '\0') {
-        moveString << promotion;
+    // Append promotion character or special move indicator if applicable
+    switch (special) {
+        case PROMOTION_QUEEN:
+            moveString << "q";
+            break;
+        case PROMOTION_KNIGHT:
+            moveString << "n";
+            break;
+        case PROMOTION_ROOK:
+            moveString << "r";
+            break;
+        case PROMOTION_BISHOP:
+            moveString << "b";
+            break;
+        case CASTLING_KINGSIDE:
+            moveString.str("O-O");
+            break;
+        case CASTLING_QUEENSIDE:
+            moveString.str("O-O-O");
+            break;
+        case EN_PASSANT:
+            moveString << "e.p.";
+            break;
+        default:
+            break;  // No special move
     }
 
     return moveString.str();
@@ -494,7 +490,7 @@ static std::vector<uint16_t> generateCastlingMoves(const BoardState& board) {
             // Ensure those squares are not under attack
             if (!(kingsideMask & enemyAttackMask)) {
                 uint16_t kingsideCastleMove =
-                    encodeMove(kingSquare, isWhite ? 6 : 62);  // e1g1 or e8g8
+                    encodeMove(kingSquare, isWhite ? 6 : 62, CASTLING_KINGSIDE);  // e1g1 or e8g8
                 castlingMoves.push_back(kingsideCastleMove);
             }
         }
@@ -507,7 +503,7 @@ static std::vector<uint16_t> generateCastlingMoves(const BoardState& board) {
             // Ensure those squares are not under attack
             if (!(queensideMask & enemyAttackMask)) {
                 uint16_t queensideCastleMove =
-                    encodeMove(kingSquare, isWhite ? 2 : 58);  // e1c1 or e8c8
+                    encodeMove(kingSquare, isWhite ? 2 : 58, CASTLING_QUEENSIDE);  // e1c1 or e8c8
                 castlingMoves.push_back(queensideCastleMove);
             }
         }
@@ -576,7 +572,7 @@ static uint64_t generatePawnBitboard(
 }
 
 // Function to convert potential pawn moves from a bitboard to uint16_t encoded moves
-static std::vector<uint16_t> pawnBitboardToMoves(int pawn_square, uint64_t move_bitboard) {
+static std::vector<uint16_t> pawnBitboardToMoves(int pawn_square, uint64_t move_bitboard, uint8_t epsquare) {
     std::vector<uint16_t> encoded_moves;
 
     while (move_bitboard) {
@@ -585,13 +581,18 @@ static std::vector<uint16_t> pawnBitboardToMoves(int pawn_square, uint64_t move_
         // Check for promotion
         if (dest_square >= 56 || dest_square <= 7) {  // 8th or 1st rank
             // Add four promotion moves: Queen, Rook, Bishop, Knight
-            encoded_moves.push_back(encodeMove(pawn_square, dest_square, 'q'));
-            encoded_moves.push_back(encodeMove(pawn_square, dest_square, 'r'));
-            encoded_moves.push_back(encodeMove(pawn_square, dest_square, 'b'));
-            encoded_moves.push_back(encodeMove(pawn_square, dest_square, 'n'));
+            encoded_moves.push_back(encodeMove(pawn_square, dest_square, PROMOTION_QUEEN));
+            encoded_moves.push_back(encodeMove(pawn_square, dest_square, PROMOTION_KNIGHT));
+            encoded_moves.push_back(encodeMove(pawn_square, dest_square, PROMOTION_ROOK));
+            encoded_moves.push_back(encodeMove(pawn_square, dest_square, PROMOTION_BISHOP));
+        } else if (dest_square == epsquare) {  // En passant move
+            encoded_moves.push_back(encodeMove(pawn_square, dest_square, EN_PASSANT));
+        } else if (dest_square == pawn_square + 16 || dest_square == pawn_square - 16) {
+            encoded_moves.push_back(encodeMove(pawn_square, dest_square, DOUBLE_PAWN_PUSH));
         } else {
             // Normal move
-            encoded_moves.push_back(encodeMove(pawn_square, dest_square, '\0'));  // No promotion
+            encoded_moves.push_back(
+                encodeMove(pawn_square, dest_square, SPECIAL_NONE));  // No promotion or special
         }
     }
 
@@ -631,7 +632,7 @@ static std::vector<uint16_t> generateMovesNoCheckNoPins(const BoardState& board)
             pawnSquare, enemyOccupancy, board.getAllOccupancy(), board.getEnPassant(), isWhite);
 
         // Use the helper function to convert the bitboard to encoded moves
-        std::vector<uint16_t> pawnMoveList = pawnBitboardToMoves(pawnSquare, pawnMoves);
+        std::vector<uint16_t> pawnMoveList = pawnBitboardToMoves(pawnSquare, pawnMoves, board.getEnPassant());
         legalMoves.insert(legalMoves.end(), pawnMoveList.begin(), pawnMoveList.end());
     }
 
@@ -711,7 +712,7 @@ static std::vector<uint16_t> generateMovesNoCheckWithPins(const BoardState& boar
             }
         }
         // Use helper function to handle pawn moves
-        std::vector<uint16_t> pawnMoveList = pawnBitboardToMoves(pawnSquare, pawnMoves);
+        std::vector<uint16_t> pawnMoveList = pawnBitboardToMoves(pawnSquare, pawnMoves, board.getEnPassant());
         legalMoves.insert(legalMoves.end(), pawnMoveList.begin(), pawnMoveList.end());
     }
 
@@ -774,7 +775,7 @@ static std::vector<uint16_t> generateMovesSingleCheckNoPins(const BoardState& bo
             blockOrCaptureMask;
 
         // Use helper function to convert to encoded moves
-        std::vector<uint16_t> pawnMoveList = pawnBitboardToMoves(pawnSquare, pawnMoves);
+        std::vector<uint16_t> pawnMoveList = pawnBitboardToMoves(pawnSquare, pawnMoves, board.getEnPassant());
         legalMoves.insert(legalMoves.end(), pawnMoveList.begin(), pawnMoveList.end());
     }
 
@@ -859,7 +860,7 @@ static std::vector<uint16_t> generateMovesSingleCheckWithPins(const BoardState& 
         }
 
         // Convert pawn moves from bitboard to encoded moves
-        std::vector<uint16_t> pawnMoveList = pawnBitboardToMoves(pawnSquare, pawnMoves);
+        std::vector<uint16_t> pawnMoveList = pawnBitboardToMoves(pawnSquare, pawnMoves, board.getEnPassant());
         legalMoves.insert(legalMoves.end(), pawnMoveList.begin(), pawnMoveList.end());
     }
 
