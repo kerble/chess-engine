@@ -166,7 +166,9 @@ std::ostream& operator<<(std::ostream& os, const BoardState& board) {
         }
         os << '\n';
     }
-
+    // Display turn
+    if(board.getTurn()) os << "White to play\n";
+    else{ os << "Black to play\n";}
     // Display castling rights
     int castlingRights = board.getCastlingRights();
     os << "Castling rights: ";
@@ -186,6 +188,7 @@ std::ostream& operator<<(std::ostream& os, const BoardState& board) {
     // Display en passant target square
     int epSquare = board.getEnPassant();
     os << "En passant target square: ";
+    int NO_EN_PASSANT = 64; //constant from another file
     if (epSquare != NO_EN_PASSANT) {
         os << algebraicFromSquare(epSquare);
     } else {
@@ -264,12 +267,14 @@ void BoardState::updateBitboard(int pieceType, uint64_t newBitboard) {
 // Get the bitboard for a specific piece type
 uint64_t BoardState::getBitboard(int pieceType) const {
     if (pieceType < 0 || pieceType >= 12) {
-        throw std::invalid_argument("Invalid pieceType in updateBitboard");
+        throw std::invalid_argument("Invalid pieceType in getBitboard.");
         return 0;
     }
     return bitboards[pieceType];
 }
-
+uint64_t BoardState::getOccupancy(bool isWhite) const {
+    return isWhite ? white_occupancy : black_occupancy;
+}
 // Set castling rights using a bitmask
 void BoardState::setCastlingRights(uint8_t rights) { castling_rights = rights; }
 
@@ -293,6 +298,17 @@ bool BoardState::canCastleQueenside(bool isWhite) const {
     }
 }
 
+void BoardState::revokeKingsideCastlingRights(BoardState& board, bool isWhite) {
+    castling_rights &= ~(isWhite ? 0b01 : 0b0100);
+}
+
+void BoardState::revokeQueensideCastlingRights(BoardState& board, bool isWhite) {
+    castling_rights &= ~(isWhite ? 0b10 : 0b1000);
+}
+
+void BoardState::revokeAllCastlingRights(BoardState& board, bool isWhite) {
+    castling_rights &= ~(isWhite ? 0b11 : 0b1100);
+}
 // Get the en passant square (returns the square where en passant is possible, 0-63)
 // NO_EN_PASSANT if not possible
 uint8_t BoardState::getEnPassant() const { return en_passant_square; }
@@ -300,7 +316,7 @@ int BoardState::getMoveCounter() const { return fullmove_number; }
 uint8_t BoardState::getCastlingRights() const { return castling_rights; }
 // Set the turn (true = white's turn, false = black's turn)
 void BoardState::setTurn(bool isWhiteTurn) { is_white_turn = isWhiteTurn; }
-
+void BoardState::flipTurn(){ is_white_turn = !is_white_turn;}
 // Get the current turn (true = white's turn, false = black's turn)
 bool BoardState::getTurn() const { return is_white_turn; }
 

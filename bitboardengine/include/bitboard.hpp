@@ -7,6 +7,7 @@
 #include <string>
 #include <sstream>
 #include <stdexcept>
+#include <iostream> //remove later
 
 enum PieceIndex {
     WHITE_PAWNS = 0,
@@ -22,8 +23,6 @@ enum PieceIndex {
     BLACK_QUEENS = 10,
     BLACK_KINGS = 11
 };
-
-constexpr int NO_EN_PASSANT = 64;
 
 // Bit manipulation functions
 uint64_t set_bit(uint64_t bitboard, int square);
@@ -69,6 +68,9 @@ public:
     uint64_t getBitboard(int pieceType) const;
 
     // Methods to update and check game state (castling, en-passant, etc.)
+    void revokeKingsideCastlingRights(BoardState& board, bool isWhite);
+    void revokeQueensideCastlingRights(BoardState& board, bool isWhite);
+    void revokeAllCastlingRights(BoardState& board, bool isWhite);
     void setCastlingRights(uint8_t rights);
     uint8_t getCastlingRights() const;
     bool canCastleKingside(bool isWhite) const;
@@ -76,11 +78,12 @@ public:
     int getMoveCounter() const;
     void setEnPassant(uint8_t square);
     uint8_t getEnPassant() const;
-
+    void flipTurn();
     void setTurn(bool isWhiteTurn);
     bool getTurn() const;
 
     void setOccupancy(uint64_t white, uint64_t black);
+    uint64_t getOccupancy(bool isWhite) const;
     uint64_t getWhiteOccupancy() const;
     uint64_t getBlackOccupancy() const;
     uint64_t getAllOccupancy() const;
@@ -92,11 +95,11 @@ public:
 
     uint64_t getZobristHash() const;
 
-    void movePiece(int pieceType, int fromSquare, int toSquare);
-
 };
 
 // Overload the << operator to visualize the board state
 std::ostream& operator<<(std::ostream& os, const BoardState& board);
-
+int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite);
+uint64_t findBitboard(const BoardState& board, int square, bool isWhite);
+int getPromotedPieceType(int special, bool isWhite);
 #endif // BITBOARD_HPP

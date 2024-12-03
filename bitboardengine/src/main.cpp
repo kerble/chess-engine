@@ -261,10 +261,36 @@ int main(int argc, char* argv[]) {
     // Apply the chosen move
     MoveUndo undoState;
     uint16_t move = legalMoves[choice - 1];
-    undoState = applyMove(board, move);
+    undoState = storeUndoData(board, move);
+    BoardState copyboard = board;
+    applyMove(board, move);
 
     // Print the updated board state
     std::cout << "Updated board:\n" << board << std::endl;
+    std::cout << "updated board's pawns" << bitboardToBinaryString(board.getBitboard(WHITE_PAWNS)) << endl;
+    // cout << "undostate:" << endl;
+    // cout << "fromBitboard: " << bitboardToBinaryString(undoState.fromBitboard) << endl;
+    // cout << "toBitboard: " << bitboardToBinaryString(undoState.toBitboard) << endl << endl;
 
+    // cout << "capture: " << undoState.capture << endl;
+    // cout << "captured_piece_type: " << undoState.captured_piece_type << endl;
+    // cout << "capturedBitboard: " << bitboardToBinaryString(undoState.capturedBitboard) << endl << endl;
+
+    // cout << "castlingRights: " << undoState.castlingRights << endl;
+    // string epState;
+    // if(undoState.enPassantState == NO_EN_PASSANT) epState = "-";
+    // else{epState = algebraicFromSquare(undoState.enPassantState);}
+    // cout << "enPassantState: " << epState << endl;
+    // cout << "halfMoveClock: " << undoState.halfMoveClock << endl;
+    // cout << "move: " << moveToString(undoState.move) << endl;
+    // cout << "moveCounter: " << undoState.moveCounter << endl;
+
+    undoMove(board, undoState);
+    // if(board == copyboard){
+    //     std::cout << "horray" << std::endl;
+    // }
+    std::cout << "reverted board:\n" << board << std::endl;
+    double score = evaluate(board);
+    std::cout << "score is: " << score << std::endl;
     return 0;
 }

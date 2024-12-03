@@ -13,59 +13,6 @@ inline int popLSB(uint64_t& bitboard) {
 }
 
 /*
-Bits [0-5]: fromSquare
-Bits [6-11]: toSquare
-Bits [12-15]: Castling or en passant.
-*/
-uint16_t encodeMove(int fromSquare, int toSquare, int special = SPECIAL_NONE) {
-    return (fromSquare & 0x3F) | ((toSquare & 0x3F) << 6) | (special << 12);
-}
-
-void decodeMove(uint16_t move, int& fromSquare, int& toSquare, int& special) {
-    fromSquare = move & 0x3F;       // Extract bits [0-5]
-    toSquare = (move >> 6) & 0x3F;  // Extract bits [6-11]
-    special = (move >> 12) & 0xF;   // Extract bits [12-15]
-}
-
-// Convert uint16_t move to string representation
-std::string moveToString(uint16_t move) {
-    int fromSquare, toSquare;
-    int special;
-    decodeMove(move, fromSquare, toSquare, special);
-
-    std::ostringstream moveString;
-    moveString << algebraicFromSquare(fromSquare) << algebraicFromSquare(toSquare);
-
-    // Append promotion character or special move indicator if applicable
-    switch (special) {
-        case PROMOTION_QUEEN:
-            moveString << "q";
-            break;
-        case PROMOTION_KNIGHT:
-            moveString << "n";
-            break;
-        case PROMOTION_ROOK:
-            moveString << "r";
-            break;
-        case PROMOTION_BISHOP:
-            moveString << "b";
-            break;
-        case CASTLING_KINGSIDE:
-            moveString.str("O-O");
-            break;
-        case CASTLING_QUEENSIDE:
-            moveString.str("O-O-O");
-            break;
-        case EN_PASSANT:
-            moveString << "e.p.";
-            break;
-        default:
-            break;  // No special move
-    }
-
-    return moveString.str();
-}
-/*
 Generate a bitboard with 1s on every square between a king and a piece actively
 checking it, including the attacking piece, excluding the king. Pass allOccupancy
 in the event of blocking/capturing and pass only enemy occupancy in the event
@@ -789,7 +736,8 @@ static std::vector<uint16_t> generateMovesSingleCheckNoPins(const BoardState& bo
 static std::vector<uint16_t> generateMovesSingleCheckWithPins(const BoardState& board,
                                                               std::vector<uint64_t>& pinMasks) {
     std::vector<uint16_t> legalMoves;
-    bool isWhite = board.getTurn();  // Use getTurn to determine whose turn it is
+        // Use getTurn to determine whose turn it is
+    bool isWhite = board.getTurn();
 
     uint64_t kingBB = board.getBitboard(isWhite ? WHITE_KINGS : BLACK_KINGS);
     // Extract the king's position
