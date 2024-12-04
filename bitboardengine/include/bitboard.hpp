@@ -1,7 +1,7 @@
 // bitboard.hpp
 #ifndef BITBOARD_HPP
 #define BITBOARD_HPP
-
+#include <random>
 #include <array>
 #include <cstdint>
 #include <string>
@@ -24,10 +24,28 @@ enum PieceIndex {
     BLACK_KINGS = 11
 };
 
+
+// Move encoding constants
+constexpr int SPECIAL_NONE = 0x0;        // 0000
+constexpr int PROMOTION_QUEEN = 0x1;     // 0001
+constexpr int PROMOTION_KNIGHT = 0x2;    // 0010
+constexpr int PROMOTION_ROOK = 0x3;      // 0011
+constexpr int PROMOTION_BISHOP = 0x4;    // 0100
+constexpr int CASTLING_KINGSIDE = 0x5;   // 0101
+constexpr int CASTLING_QUEENSIDE = 0x6;  // 0110
+constexpr int DOUBLE_PAWN_PUSH = 0x7;    // 0111
+constexpr int EN_PASSANT = 0x8;          // 1000, capturing e.p
+constexpr int NO_EN_PASSANT = 64;
+
+// Declare Zobrist tables
+extern uint64_t zobristTable[12][64];
+extern uint64_t zobristCastling[16];
+extern uint64_t zobristEnPassant[8];
+extern uint64_t zobristSideToMove;
+
+
 // Bit manipulation functions
 uint64_t set_bit(uint64_t bitboard, int square);
-uint64_t clear_bit(uint64_t bitboard, int square);
-bool get_bit(uint64_t bitboard, int square);
 
 // FEN utility
 int charToPieceIndex(char piece);
@@ -93,6 +111,7 @@ public:
     int getHalfmoveClock() const;
     int getFullmoveNumber() const;
 
+    void setZobristHash(uint64_t zobrist);
     uint64_t getZobristHash() const;
     friend bool operator==(const BoardState& lhs, const BoardState& rhs);
 };
@@ -103,4 +122,9 @@ int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite);
 uint64_t findBitboard(const BoardState& board, int square, bool isWhite);
 int getPromotedPieceType(int special, bool isWhite);
 BoardState parseFEN(const std::string& fen);
+
+// Function to initialize the Zobrist tables
+void initializeZobrist();
+uint64_t computeZobristHash(const BoardState& board);
+
 #endif // BITBOARD_HPP

@@ -101,6 +101,8 @@ int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite) {
 }
 
 void applyMove(BoardState& board, uint16_t move) {
+
+    uint64_t zobristHash = board.getZobristHash();
     // Decode the move
     int fromSquare, toSquare, special;
     decodeMove(move, fromSquare, toSquare, special);
@@ -123,11 +125,16 @@ void applyMove(BoardState& board, uint16_t move) {
         board.updateBitboard(promotionType, promotionBitboard);
         // Remove the pawn from the board
         fromPieceBitboard ^= sourceMask;  // remove the pawn
+        zobristHash ^= zobristTable[pieceType][fromSquare];
         board.updateBitboard(pieceType, fromPieceBitboard);
     } else {
         // Move the piece
         fromPieceBitboard ^= sourceMask;  // Remove from source
         fromPieceBitboard |= destMask;    // Add to destination
+
+        zobristHash ^= zobristTable[pieceType][fromSquare];
+        zobristHash ^= zobristTable[pieceType][toSquare];
+
         board.updateBitboard(pieceType, fromPieceBitboard);
     }
     // Handle captures
@@ -136,12 +143,15 @@ void applyMove(BoardState& board, uint16_t move) {
         uint64_t enemyPawnMask = (1ULL << captureSquare);
         int enemyPawnType = isWhite ? BLACK_PAWNS : WHITE_PAWNS;
         uint64_t enemyPawnBitboard = board.getBitboard(enemyPawnType) ^ enemyPawnMask;
+
+        zobristHash ^= zobristTable[enemyPawnType][toSquare];
         board.updateBitboard(enemyPawnType, enemyPawnBitboard);
         capture = true;
     } else if (board.getOccupancy(!isWhite) & destMask) {
         int capturedType = findPieceType(board, destMask, !isWhite);
         uint64_t capturedBitboard = board.getBitboard(capturedType);
         capturedBitboard ^= destMask;  // remove the bit
+        zobristHash ^= zobristTable[capturedType][toSquare];
         board.updateBitboard(capturedType, capturedBitboard);
         capture = true;
     }
@@ -162,8 +172,13 @@ void applyMove(BoardState& board, uint16_t move) {
 
         rookBitboard ^= rookFromMask;  // Remove rook from its initial position
         rookBitboard |= rookToMask;    // Place rook in its new position
+        zobristHash ^= zobristTable[isWhite ? WHITE_ROOKS : BLACK_ROOKS][rookFromSquare];
+        zobristHash ^= zobristTable[isWhite ? WHITE_ROOKS : BLACK_ROOKS][rookToSquare];
         board.updateBitboard(isWhite ? WHITE_ROOKS : BLACK_ROOKS, rookBitboard);
     }
+
+    uint64_t oldCastlingRights = board.getCastlingRights();
+    zobristHash ^= zobristCastling[oldCastlingRights];
 
     // Handle castling rights
     if (pieceType == WHITE_KINGS || pieceType == BLACK_KINGS) {
@@ -178,6 +193,15 @@ void applyMove(BoardState& board, uint16_t move) {
         } else if (fromSquare == (isWhite ? 7 : 63)) {  // Kingside rook
             board.revokeKingsideCastlingRights(board, isWhite);
         }
+    }
+
+    uint64_t newCastlingRights = board.getCastlingRights();
+    zobristHash ^= zobristCastling[newCastlingRights];
+
+    int oldEnPassantSquare = board.getEnPassant();
+    if (oldEnPassantSquare != NO_EN_PASSANT) {
+        int oldEnPassantFile = oldEnPassantSquare % 8;
+        zobristHash ^= zobristEnPassant[oldEnPassantFile];
     }
 
     // Update en passant state
@@ -202,6 +226,12 @@ void applyMove(BoardState& board, uint16_t move) {
         // Clear en passant state for all other moves
         board.setEnPassant(NO_EN_PASSANT);
     }
+    
+    int newEnPassantSquare = board.getEnPassant();
+    if (newEnPassantSquare != NO_EN_PASSANT) {
+        int newEnPassantFile = newEnPassantSquare % 8;
+        zobristHash ^= zobristEnPassant[newEnPassantFile];
+    }
 
     if (pieceType == WHITE_PAWNS || pieceType == BLACK_PAWNS) pawn_move = true;
     // Update counters
@@ -211,7 +241,11 @@ void applyMove(BoardState& board, uint16_t move) {
     if (!isWhite) fullmove += 1;
 
     board.setMoveCounters(halfmove, fullmove);
+    zobristHash ^= zobristSideToMove;
+
     board.flipTurn();
+    board.setZobristHash(zobristHash);
+
 }
 
 
@@ -270,22 +304,26 @@ MoveUndo storeUndoData(const BoardState& board, uint16_t move) {
     undoState.move = move;
     return undoState;
 }
-
 void undoMove(BoardState& board, const MoveUndo& undoState) {
-    // Swap the turn back
-    board.flipTurn();
+    // Retrieve the current Zobrist hash
+    uint64_t zobristHash = board.getZobristHash();
 
-    // Restore moved piece
+    // Flip the turn back
+    board.flipTurn();
+    zobristHash ^= zobristSideToMove;  // Reverse turn flip in Zobrist hash
+
+    // Restore moved piece to its original square
+    int fromSquare, toSquare, special;
+    decodeMove(undoState.move, fromSquare, toSquare, special);
+    zobristHash ^= zobristTable[undoState.from_piece_type][toSquare];    // Remove from destination
+    zobristHash ^= zobristTable[undoState.from_piece_type][fromSquare];  // Add back to source
     board.updateBitboard(undoState.from_piece_type, undoState.fromBitboard);
 
     // Restore captured piece if there was a capture
     if (undoState.capture) {
-        uint64_t capturedBitboard = undoState.capturedBitboard;
-        board.updateBitboard(undoState.captured_piece_type, capturedBitboard);
+        zobristHash ^= zobristTable[undoState.captured_piece_type][toSquare];  // Add captured piece back
+        board.updateBitboard(undoState.captured_piece_type, undoState.capturedBitboard);
     }
-
-    int fromSquare, toSquare, special;
-    decodeMove(undoState.move, fromSquare, toSquare, special);
 
     // Handle special logic for castling
     if (special == CASTLING_KINGSIDE || special == CASTLING_QUEENSIDE) {
@@ -304,16 +342,41 @@ void undoMove(BoardState& board, const MoveUndo& undoState) {
         rookBitboard ^= (1ULL << rookTo);    // Remove rook from castled-to square
         rookBitboard |= (1ULL << rookFrom);  // Place rook back at original square
         board.updateBitboard(alliedRookIndex, rookBitboard);
+
+        // Update Zobrist hash for the rook's movement
+        zobristHash ^= zobristTable[alliedRookIndex][rookTo];  // Remove rook from castled-to square
+        zobristHash ^= zobristTable[alliedRookIndex][rookFrom];  // Add rook back to original square
     }
 
     // Undo promotions
     if (special >= PROMOTION_QUEEN && special <= PROMOTION_BISHOP) {
         // Remove the promoted piece
+        zobristHash ^=
+            zobristTable[undoState.promotedPieceType][toSquare];           // Remove promoted piece
+        zobristHash ^= zobristTable[undoState.from_piece_type][toSquare];  // Add pawn back
         board.updateBitboard(undoState.promotedPieceType, undoState.promotedBitboard);
     }
 
     // Restore metadata
+    if (undoState.enPassantState != NO_EN_PASSANT) {
+        int enPassantFile = undoState.enPassantState % 8;
+        zobristHash ^= zobristEnPassant[enPassantFile];  // Add en passant square back
+    }
+    int currentEnPassant = board.getEnPassant();
+    if (currentEnPassant != NO_EN_PASSANT) {
+        int enPassantFile = currentEnPassant % 8;
+        zobristHash ^= zobristEnPassant[enPassantFile];  // Remove current en passant square
+    }
     board.setEnPassant(undoState.enPassantState);
+
+    // Restore castling rights
+    zobristHash ^= zobristCastling[board.getCastlingRights()];  // Remove current castling rights
+    zobristHash ^= zobristCastling[undoState.castlingRights];   // Add back old castling rights
     board.setCastlingRights(undoState.castlingRights);
+
+    // Restore move counters
     board.setMoveCounters(undoState.halfMoveClock, undoState.moveCounter);
+
+    // Update the Zobrist hash
+    board.setZobristHash(zobristHash);
 }

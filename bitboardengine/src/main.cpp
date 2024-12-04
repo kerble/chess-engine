@@ -2,11 +2,10 @@
 #include <sstream>
 #include <chrono>
 
-#include "main.hpp"
-#include "bitboard.hpp"
-#include "movegen.hpp"
-#include "move.hpp"
-#include "evaluate.hpp"
+// #include "bitboard.hpp"
+// #include "movegen.hpp"
+// #include "move.hpp"
+// #include "evaluate.hpp"
 #include "search.hpp"
 using namespace std;
 
@@ -26,6 +25,12 @@ int main(int argc, char* argv[]) {
 
     string fen = argv[1];
 
+    initKingThreatMasks();
+    initKnightThreatMasks();
+    initPawnThreatMasks();
+    initmagicmoves();
+    initializeZobrist();
+    
     // Create a BoardState object
     BoardState board;
 
@@ -37,10 +42,7 @@ int main(int argc, char* argv[]) {
         cerr << "Failed to parse FEN: " << e.what() << endl;
         return 1;
     }
-    initKingThreatMasks();
-    initKnightThreatMasks();
-    initPawnThreatMasks();
-    initmagicmoves();
+
     // vector<uint16_t> legalMoves = allLegalMoves(board);
     // int i = 1;
     // for(auto move : legalMoves){ 

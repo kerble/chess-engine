@@ -2,9 +2,10 @@
 
 uint64_t set_bit(uint64_t bitboard, int square) { return bitboard | (1ULL << square); }
 
-uint64_t clear_bit(uint64_t bitboard, int square) { return bitboard & ~(1ULL << square); }
-
-bool get_bit(uint64_t bitboard, int square) { return bitboard & (1ULL << square); }
+uint64_t zobristTable[12][64];
+uint64_t zobristCastling[16];
+uint64_t zobristEnPassant[8];
+uint64_t zobristSideToMove;
 
 int charToPieceIndex(char piece) {
     switch (piece) {
@@ -188,7 +189,6 @@ std::ostream& operator<<(std::ostream& os, const BoardState& board) {
     // Display en passant target square
     int epSquare = board.getEnPassant();
     os << "En passant target square: ";
-    int NO_EN_PASSANT = 64; //constant from another file
     if (epSquare != NO_EN_PASSANT) {
         os << algebraicFromSquare(epSquare);
     } else {
@@ -275,7 +275,6 @@ BoardState parseFEN(const std::string& fen) {
     uint64_t castling = parseCastlingRights(castlingRights);
     board.setCastlingRights(castling);
 
-    int NO_EN_PASSANT = 64;
     // Parse en passant square
     int enPassantSq = (enPassant == "-") ? NO_EN_PASSANT : squareFromAlgebraic(enPassant);
     board.setEnPassant(enPassantSq);
@@ -286,6 +285,10 @@ BoardState parseFEN(const std::string& fen) {
     // Set occupancy bitboards
     board.setOccupancy(whiteOccupancy, blackOccupancy);
 
+    // Calculate and set Zobrist hash
+    uint64_t zobristHash = computeZobristHash(board);
+    board.setZobristHash(zobristHash);
+    
     return board;
 }
 
@@ -438,8 +441,67 @@ void BoardState::setMoveCounters(int halfmove, int fullmove) {
     fullmove_number = fullmove;
 }
 
+void BoardState::setZobristHash(uint64_t zobrist){ zobrist_hash = zobrist; }
+uint64_t BoardState::getZobristHash() const { return zobrist_hash; }
+
 // Get halfmove clock (the number of halfmoves since the last pawn move or capture)
 int BoardState::getHalfmoveClock() const { return halfmove_clock; }
 
 // Get fullmove number (the number of moves in the game, counting both players' moves)
 int BoardState::getFullmoveNumber() const { return fullmove_number; }
+
+void initializeZobrist() {
+    std::mt19937_64 rng(1234567);  // Seed for reproducibility
+    std::uniform_int_distribution<uint64_t> dist;
+
+    // Randomize piece positions
+    for (int piece = 0; piece < 12; ++piece) {
+        for (int square = 0; square < 64; ++square) {
+            zobristTable[piece][square] = dist(rng);
+        }
+    }
+
+    // Randomize castling rights
+    for (int i = 0; i < 16; ++i) {
+        zobristCastling[i] = dist(rng);
+    }
+
+    // Randomize en passant files
+    for (int i = 0; i < 8; ++i) {
+        zobristEnPassant[i] = dist(rng);
+    }
+
+    // Randomize side to move
+    zobristSideToMove = dist(rng);
+}
+
+uint64_t computeZobristHash(const BoardState& board) {
+    uint64_t hash = 0;
+
+    // Add pieces
+    for (int piece = 0; piece < 12; ++piece) {
+        uint64_t bitboard = board.getBitboard(piece);
+        while (bitboard) {
+            int square = __builtin_ctzll(bitboard);  // Find least significant bit
+            hash ^= zobristTable[piece][square];
+            bitboard &= bitboard - 1;  // Clear the least significant bit
+        }
+    }
+
+    // Add castling rights
+    hash ^= zobristCastling[board.getCastlingRights()];
+
+    // Add en passant
+    int enPassantSquare = board.getEnPassant();
+    if (enPassantSquare != NO_EN_PASSANT) {
+        int enPassantFile = enPassantSquare % 8;
+        hash ^= zobristEnPassant[enPassantFile];
+    }
+
+    // Add side to move
+    if (!board.getTurn()) {
+        hash ^= zobristSideToMove;
+    }
+
+    return hash;
+}

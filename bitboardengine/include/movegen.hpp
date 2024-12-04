@@ -16,6 +16,7 @@ extern std::array<uint64_t, 64> bpawn_threats_table;
 void initKingThreatMasks();
 void initKnightThreatMasks();
 void initPawnThreatMasks();
+
 uint64_t generateThreatMask(int pieceType, int attackerSquare, uint64_t allOccupancy);
 
 bool is_in_check(const BoardState& board);
