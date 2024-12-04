@@ -94,7 +94,7 @@ public:
     int getFullmoveNumber() const;
 
     uint64_t getZobristHash() const;
-
+    friend bool operator==(const BoardState& lhs, const BoardState& rhs);
 };
 
 // Overload the << operator to visualize the board state
@@ -102,4 +102,5 @@ std::ostream& operator<<(std::ostream& os, const BoardState& board);
 int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite);
 uint64_t findBitboard(const BoardState& board, int square, bool isWhite);
 int getPromotedPieceType(int special, bool isWhite);
+BoardState parseFEN(const std::string& fen);
 #endif // BITBOARD_HPP

@@ -36,6 +36,7 @@ struct MoveUndo {
 
 std::string moveToString(uint16_t move);
 
+MoveUndo storeUndoData(const BoardState& board, uint16_t move);
 void applyMove(BoardState& board, uint16_t move);
 void undoMove(BoardState& board, const MoveUndo& undoState);
 

@@ -92,6 +92,7 @@ static int findAttackerSquare(const BoardState& board) {
     }
 
     // If no attackers are found, throw an error
+    std::cout << board << std::endl;
     throw std::logic_error(
         "No attacker found for the king. This function is only called when there is an attacker. "
         "Something is wrong");
@@ -183,16 +184,13 @@ void initPawnThreatMasks() {
         int rank = square / 8;  // Row number (0-7)
         int file = square % 8;  // Column number (0-7)
 
-        // Skip invalid ranks for pawns
-        if (rank > 0 && rank < 7) {
-            // White pawn threats (upward diagonals)
-            if (file > 0) white_threats = set_bit(white_threats, square + 7);  // Up-left
-            if (file < 7) white_threats = set_bit(white_threats, square + 9);  // Up-right
+        // White pawn threats (upward diagonals)
+        if (file > 0) white_threats = set_bit(white_threats, square + 7);  // Up-left
+        if (file < 7) white_threats = set_bit(white_threats, square + 9);  // Up-right
 
-            // Black pawn threats (downward diagonals)
-            if (file > 0) black_threats = set_bit(black_threats, square - 9);  // Down-left
-            if (file < 7) black_threats = set_bit(black_threats, square - 7);  // Down-right
-        }
+        // Black pawn threats (downward diagonals)
+        if (file > 0) black_threats = set_bit(black_threats, square - 9);  // Down-left
+        if (file < 7) black_threats = set_bit(black_threats, square - 7);  // Down-right
 
         // Store in the respective tables
         wpawn_threats_table[square] = white_threats;
@@ -200,7 +198,7 @@ void initPawnThreatMasks() {
     }
 }
 
-static uint64_t generateThreatMask(int pieceType, int attackerSquare, uint64_t allOccupancy) {
+uint64_t generateThreatMask(int pieceType, int attackerSquare, uint64_t allOccupancy) {
     switch (pieceType) {
         case WHITE_KINGS:
         case BLACK_KINGS:
@@ -252,6 +250,15 @@ static int numCheckers(const BoardState& board) {
         isWhite ? bpawn_threats_table : wpawn_threats_table;
     int checkers = 0;
 
+    // Check threats from opponent pawns
+    uint64_t remainingPawns = opponentPawns;
+    while (remainingPawns) {
+        int pawnSquare = popLSB(remainingPawns);
+        if (pawnThreatsTable[pawnSquare] & kingBB) {
+            //impossible for a discovered attack on a checking pawn move
+            return 1;
+        }
+    }
     // Check threats from opponent bishops and queens (diagonal attacks)
     uint64_t bishopsAndQueens = opponentBishops | opponentQueens;
     while (bishopsAndQueens) {
@@ -279,17 +286,67 @@ static int numCheckers(const BoardState& board) {
         }
     }
 
+
+    // If no threats are found, the king is not in check
+    return checkers;
+}
+
+// Exact same as num checkers except it returns early.
+bool is_in_check(const BoardState& board) {
+    bool isWhite = board.getTurn();
+    // Get the king's bitboard and occupancy for the side to check
+    uint64_t kingBB = board.getBitboard(isWhite ? WHITE_KINGS : BLACK_KINGS);
+
+    // Get the opponent's bitboards
+    uint64_t opponentPawns = board.getBitboard(isWhite ? BLACK_PAWNS : WHITE_PAWNS);
+    uint64_t opponentKnights = board.getBitboard(isWhite ? BLACK_KNIGHTS : WHITE_KNIGHTS);
+    uint64_t opponentBishops = board.getBitboard(isWhite ? BLACK_BISHOPS : WHITE_BISHOPS);
+    uint64_t opponentRooks = board.getBitboard(isWhite ? BLACK_ROOKS : WHITE_ROOKS);
+    uint64_t opponentQueens = board.getBitboard(isWhite ? BLACK_QUEENS : WHITE_QUEENS);
+    uint64_t allOccupancy = board.getAllOccupancy();
+
+    // Select the appropriate threat table for pawns
+    const std::array<uint64_t, 64>& pawnThreatsTable =
+        isWhite ? bpawn_threats_table : wpawn_threats_table;
+
+    // Check threats from opponent bishops and queens (diagonal attacks)
+    uint64_t bishopsAndQueens = opponentBishops | opponentQueens;
+    while (bishopsAndQueens) {
+        int square = popLSB(bishopsAndQueens);
+        if (Bmagic(square, allOccupancy) & kingBB) {
+            return true;
+        }
+    }
+
+    // Check threats from opponent rooks and queens (straight-line attacks)
+    uint64_t rooksAndQueens = opponentRooks | opponentQueens;
+    while (rooksAndQueens) {
+        int square = popLSB(rooksAndQueens);
+        if (Rmagic(square, allOccupancy) & kingBB) {
+            return true;
+        }
+    }
+
+    // Check threats from opponent knights
+    uint64_t knights = opponentKnights;
+    while (knights) {
+        int knightSquare = popLSB(knights);
+        if (knight_threats_table[knightSquare] & kingBB) {
+            return true;
+        }
+    }
+
     // Check threats from opponent pawns
     uint64_t remainingPawns = opponentPawns;
     while (remainingPawns) {
         int pawnSquare = popLSB(remainingPawns);
         if (pawnThreatsTable[pawnSquare] & kingBB) {
-            checkers += 1;
+            return true;
         }
     }
 
     // If no threats are found, the king is not in check
-    return checkers;
+    return false;
 }
 
 /*

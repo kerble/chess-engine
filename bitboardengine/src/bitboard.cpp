@@ -199,6 +199,18 @@ std::ostream& operator<<(std::ostream& os, const BoardState& board) {
     return os;
 }
 
+bool operator==(const BoardState& lhs, const BoardState& rhs) {
+    return lhs.bitboards == rhs.bitboards &&
+           lhs.white_occupancy == rhs.white_occupancy &&
+           lhs.black_occupancy == rhs.black_occupancy &&
+           lhs.all_occupancy == rhs.all_occupancy &&
+           lhs.en_passant_square == rhs.en_passant_square &&
+           lhs.castling_rights == rhs.castling_rights &&
+           lhs.is_white_turn == rhs.is_white_turn &&
+           lhs.halfmove_clock == rhs.halfmove_clock &&
+           lhs.fullmove_number == rhs.fullmove_number &&
+           lhs.zobrist_hash == rhs.zobrist_hash;
+}
 // Convert a uint64_t bitboard into a human-readable binary string
 std::string bitboardToBinaryString(uint64_t bitboard) {
     std::string result = "\n";
@@ -210,6 +222,71 @@ std::string bitboardToBinaryString(uint64_t bitboard) {
         result += '\n';  // Newline after each rank
     }
     return result;
+}
+
+BoardState parseFEN(const std::string& fen) {
+    BoardState board;
+    std::istringstream fenStream(fen);
+    std::string piecePlacement, sideToMove, castlingRights, enPassant;
+    int halfmoveClock, fullmoveNumber;
+
+    // Parse the FEN components
+    fenStream >> piecePlacement >> sideToMove >> castlingRights >> enPassant >> halfmoveClock >>
+        fullmoveNumber;
+
+    // Initialize bitboards for all pieces
+    for (int i = 0; i < 12; ++i) {
+        board.updateBitboard(i, 0);
+    }
+
+    // Initialize occupancy bitboards
+    uint64_t whiteOccupancy = 0;
+    uint64_t blackOccupancy = 0;
+
+    int square = 56;  // Start from bottom-left (a1), which is bit 0
+    for (char ch : piecePlacement) {
+        if (std::isdigit(ch)) {
+            square += (ch - '0');  // Skip empty squares
+        } else if (ch == '/') {
+            square -= 16;  // Move to the next rank (up one row in FEN, down in bitboard)
+        } else {
+            int pieceType = charToPieceIndex(ch);  // Get piece index
+            uint64_t currentBitboard = board.getBitboard(pieceType);
+
+            // Add the piece to the piece bitboard
+            uint64_t newBitboard = set_bit(currentBitboard, square);
+            board.updateBitboard(pieceType, newBitboard);
+
+            // Update the appropriate occupancy bitboard
+            if (isupper(ch)) {
+                whiteOccupancy |= (1ULL << square);  // Uppercase letters are white
+            } else {
+                blackOccupancy |= (1ULL << square);  // Lowercase letters are black
+            }
+
+            square++;
+        }
+    }
+
+    // Parse side to move
+    board.setTurn(sideToMove == "w");
+
+    // Parse castling rights
+    uint64_t castling = parseCastlingRights(castlingRights);
+    board.setCastlingRights(castling);
+
+    int NO_EN_PASSANT = 64;
+    // Parse en passant square
+    int enPassantSq = (enPassant == "-") ? NO_EN_PASSANT : squareFromAlgebraic(enPassant);
+    board.setEnPassant(enPassantSq);
+
+    // Parse move counters
+    board.setMoveCounters(halfmoveClock, fullmoveNumber);
+
+    // Set occupancy bitboards
+    board.setOccupancy(whiteOccupancy, blackOccupancy);
+
+    return board;
 }
 
 // Constructor for BoardState
@@ -336,7 +413,24 @@ uint64_t BoardState::getBlackOccupancy() const { return black_occupancy; }
 uint64_t BoardState::getAllOccupancy() const { return all_occupancy; }
 
 // Update the all_occupancy bitboard (white + black pieces combined)
-void BoardState::updateOccupancy() { all_occupancy = white_occupancy | black_occupancy; }
+void BoardState::updateOccupancy() {
+    // Reset the occupancy bitboards
+    white_occupancy = 0;
+    black_occupancy = 0;
+
+    // Add up all white pieces' bitboards
+    for (int i = WHITE_PAWNS; i <= WHITE_KINGS; ++i) {
+        white_occupancy |= bitboards[i];
+    }
+
+    // Add up all black pieces' bitboards
+    for (int i = BLACK_PAWNS; i <= BLACK_KINGS; ++i) {
+        black_occupancy |= bitboards[i];
+    }
+
+    // Combine white and black occupancies
+    all_occupancy = white_occupancy | black_occupancy;
+}
 
 // Set move counters (halfmove clock and fullmove number)
 void BoardState::setMoveCounters(int halfmove, int fullmove) {
