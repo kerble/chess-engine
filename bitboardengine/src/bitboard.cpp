@@ -34,7 +34,10 @@ int charToPieceIndex(char piece) {
         case 'k':
             return BLACK_KINGS;
         default:
-            throw std::invalid_argument("Invalid FEN character for piece");
+            std::string piecestr = "";
+            piecestr += piece;
+            std::string error = "Invalid FEN character for piece. " + piecestr;
+            throw std::invalid_argument(error);
     }
 }
 

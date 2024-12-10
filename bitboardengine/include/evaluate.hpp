@@ -33,11 +33,6 @@ double evaluate(const BoardState& board);
 int materialCount(const BoardState& board);
 int positionalScore(const BoardState& board);
 
-// Game-ending conditions
-GameResult gameOver(const BoardState& board, const std::vector<uint16_t>& legalMoves);
-bool insufficientMaterial(const BoardState& board);
-bool whiteCheckmate(const BoardState& board, const std::vector<uint16_t>& legalMoves);
-bool blackCheckmate(const BoardState& board, const std::vector<uint16_t>& legalMoves);
-bool fiftyMoveRule(const BoardState& board);
-bool stalemate(const BoardState& board, const std::vector<uint16_t>& legalMoves);
+
+// extern int evaluated_positions;
 #endif // EVALUATE_HPP

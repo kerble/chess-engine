@@ -1,4 +1,5 @@
 #include "move.hpp"
+// int moves_looked_at = 0;
 
 /*
 Bits [0-5]: fromSquare
@@ -95,13 +96,82 @@ int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite) {
             return pieceIndex;  // Return the index of the matching piece
         }
     }
-
+    std::cout << "crashing inside of findPieceType on this board:\n";
+    std::cout << board << std::endl;
+    std::cout << bitboardToBinaryString(squareMask) << std::endl;
+    std::cout << isWhite << std::endl;
     // If no match is found, this should not happen in normal circumstances
     throw std::runtime_error("Square mask does not match any piece bitboard");
 }
 
-void applyMove(BoardState& board, uint16_t move) {
+MoveUndo storeUndoData(const BoardState& board, uint16_t move) {
+    MoveUndo undoState;
+    // Decode the move
+    int fromSquare, toSquare, special;
+    decodeMove(move, fromSquare, toSquare, special);
 
+    // Retrieve relevant bitboards
+    uint64_t sourceMask = (1ULL << fromSquare);
+    uint64_t destMask = (1ULL << toSquare);
+    bool isWhite = board.getTurn();
+
+    // Find the source piece type
+    // std::cout << "calling find piece type in storedata \n";
+// std::cout << "storing " << moveToString(move) << "\n";
+// std::cout << "in this position: \n" << board << "\n";
+    undoState.from_piece_type = findPieceType(board, sourceMask, isWhite);
+    // std::cout << "done calling find piece type in storedata \n";
+
+    // Save the source piece's bitboard
+    undoState.fromBitboard = board.getBitboard(undoState.from_piece_type);
+
+    // Save captured piece details if a capture is happening
+    uint64_t enemyOccupancy = board.getOccupancy(!isWhite);
+    undoState.capture = enemyOccupancy & destMask;
+
+    // En passant
+    if (special == EN_PASSANT) {
+        int enemy_pawn_index = isWhite ? BLACK_PAWNS : WHITE_PAWNS;
+        uint64_t enemy_pawn_bitboard = board.getBitboard(enemy_pawn_index);
+
+        undoState.captured_piece_type = enemy_pawn_index;
+        undoState.capturedBitboard = enemy_pawn_bitboard;
+        undoState.capture = true;
+
+    } else if (undoState.capture) {
+        // Find the captured piece type
+        // std::cout << "calling find piece type in storedata2 \n";
+        undoState.captured_piece_type = findPieceType(board, destMask, !isWhite);
+        // std::cout << "done calling find piece type in storedata2 \n";
+
+        // Save the captured piece's bitboard
+        undoState.capturedBitboard = board.getBitboard(undoState.captured_piece_type);
+    } else {
+        undoState.captured_piece_type = -1;
+        undoState.capturedBitboard = 0;
+    }
+
+    // Save promoted-piece information
+    if (special >= PROMOTION_QUEEN && special <= PROMOTION_BISHOP) {
+        undoState.promotedPieceType = getPromotedPieceType(special, isWhite);
+        undoState.promotedBitboard = board.getBitboard(undoState.promotedPieceType);
+    }
+
+    // Store additional state
+    undoState.enPassantState = board.getEnPassant();
+    undoState.castlingRights = board.getCastlingRights();
+    undoState.halfMoveClock = board.getHalfmoveClock();
+    undoState.moveCounter = board.getMoveCounter();
+    undoState.move = move;
+    return undoState;
+}
+
+MoveUndo applyMove(BoardState& board, uint16_t move) {
+// std::cout << "board before storing \n" << board << "\n";
+    MoveUndo moveData = storeUndoData(board, move);
+    // std::cout << "board after storing " << board << "\n";
+    // moves_looked_at++;
+    // std::cout << "playing " << moveToString(move) << std::endl;
     uint64_t zobristHash = board.getZobristHash();
     // Decode the move
     int fromSquare, toSquare, special;
@@ -115,17 +185,22 @@ void applyMove(BoardState& board, uint16_t move) {
     bool revoked_castling_rights = false;
 
     // Identify the moving piece and its bitboard
+    // std::cout << "calling find piece type in applymove \n";
     int pieceType = findPieceType(board, sourceMask, isWhite);
+    // std::cout << "done calling find piece type in applymove \n";
+
     uint64_t fromPieceBitboard = findBitboard(board, fromSquare, isWhite);
 
     // Handle promotions
     if (special >= PROMOTION_QUEEN && special <= PROMOTION_BISHOP) {
         int promotionType = getPromotedPieceType(special, isWhite);
         uint64_t promotionBitboard = board.getBitboard(promotionType) | destMask;
+        zobristHash ^= zobristTable[promotionType][toSquare];
         board.updateBitboard(promotionType, promotionBitboard);
+
         // Remove the pawn from the board
-        fromPieceBitboard ^= sourceMask;  // remove the pawn
         zobristHash ^= zobristTable[pieceType][fromSquare];
+        fromPieceBitboard ^= sourceMask;  // remove the pawn
         board.updateBitboard(pieceType, fromPieceBitboard);
     } else {
         // Move the piece
@@ -148,7 +223,9 @@ void applyMove(BoardState& board, uint16_t move) {
         board.updateBitboard(enemyPawnType, enemyPawnBitboard);
         capture = true;
     } else if (board.getOccupancy(!isWhite) & destMask) {
+        // std::cout << "calling find piece type in applymove2 \n";
         int capturedType = findPieceType(board, destMask, !isWhite);
+        // std::cout << "done calling find piece type in applymove2 \n";
         uint64_t capturedBitboard = board.getBitboard(capturedType);
         capturedBitboard ^= destMask;  // remove the bit
         zobristHash ^= zobristTable[capturedType][toSquare];
@@ -170,10 +247,11 @@ void applyMove(BoardState& board, uint16_t move) {
         uint64_t rookToMask = (1ULL << rookToSquare);
         uint64_t rookBitboard = board.getBitboard(isWhite ? WHITE_ROOKS : BLACK_ROOKS);
 
-        rookBitboard ^= rookFromMask;  // Remove rook from its initial position
-        rookBitboard |= rookToMask;    // Place rook in its new position
         zobristHash ^= zobristTable[isWhite ? WHITE_ROOKS : BLACK_ROOKS][rookFromSquare];
         zobristHash ^= zobristTable[isWhite ? WHITE_ROOKS : BLACK_ROOKS][rookToSquare];
+
+        rookBitboard ^= rookFromMask;  // Remove rook from its initial position
+        rookBitboard |= rookToMask;    // Place rook in its new position
         board.updateBitboard(isWhite ? WHITE_ROOKS : BLACK_ROOKS, rookBitboard);
     }
 
@@ -246,65 +324,11 @@ void applyMove(BoardState& board, uint16_t move) {
     board.flipTurn();
     board.setZobristHash(zobristHash);
 
+    return moveData;
 }
 
-
-MoveUndo storeUndoData(const BoardState& board, uint16_t move) {
-    MoveUndo undoState;
-    // Decode the move
-    int fromSquare, toSquare, special;
-    decodeMove(move, fromSquare, toSquare, special);
-
-    // Retrieve relevant bitboards
-    uint64_t sourceMask = (1ULL << fromSquare);
-    uint64_t destMask = (1ULL << toSquare);
-    bool isWhite = board.getTurn();
-
-    // Find the source piece type
-    undoState.from_piece_type = findPieceType(board, sourceMask, isWhite);
-
-    // Save the source piece's bitboard
-    undoState.fromBitboard = board.getBitboard(undoState.from_piece_type);
-
-    // Save captured piece details if a capture is happening
-    uint64_t enemyOccupancy = board.getOccupancy(!isWhite);
-    undoState.capture = enemyOccupancy & destMask;
-
-    // En passant
-    if (special == EN_PASSANT) {
-        int enemy_pawn_index = isWhite ? BLACK_PAWNS : WHITE_PAWNS;
-        uint64_t enemy_pawn_bitboard = board.getBitboard(enemy_pawn_index);
-
-        undoState.captured_piece_type = enemy_pawn_index;
-        undoState.capturedBitboard = enemy_pawn_bitboard;
-        undoState.capture = true;
-
-    } else if (undoState.capture) {
-        // Find the captured piece type
-        undoState.captured_piece_type = findPieceType(board, destMask, !isWhite);
-
-        // Save the captured piece's bitboard
-        undoState.capturedBitboard = board.getBitboard(undoState.captured_piece_type);
-    } else {
-        undoState.captured_piece_type = -1;
-        undoState.capturedBitboard = 0;
-    }
-
-    // Save promoted-piece information
-    if (special >= PROMOTION_QUEEN && special <= PROMOTION_BISHOP) {
-        undoState.promotedPieceType = getPromotedPieceType(special, isWhite);
-        undoState.promotedBitboard = board.getBitboard(undoState.promotedPieceType);
-    }
-
-    // Store additional state
-    undoState.enPassantState = board.getEnPassant();
-    undoState.castlingRights = board.getCastlingRights();
-    undoState.halfMoveClock = board.getHalfmoveClock();
-    undoState.moveCounter = board.getMoveCounter();
-    undoState.move = move;
-    return undoState;
-}
 void undoMove(BoardState& board, const MoveUndo& undoState) {
+    // std::cout << "undoing " << moveToString(undoState.move) << std::endl;
     // Retrieve the current Zobrist hash
     uint64_t zobristHash = board.getZobristHash();
 
@@ -315,9 +339,6 @@ void undoMove(BoardState& board, const MoveUndo& undoState) {
     // Restore moved piece to its original square
     int fromSquare, toSquare, special;
     decodeMove(undoState.move, fromSquare, toSquare, special);
-    zobristHash ^= zobristTable[undoState.from_piece_type][toSquare];    // Remove from destination
-    zobristHash ^= zobristTable[undoState.from_piece_type][fromSquare];  // Add back to source
-    board.updateBitboard(undoState.from_piece_type, undoState.fromBitboard);
 
     // Restore captured piece if there was a capture
     if (undoState.capture) {
@@ -349,14 +370,21 @@ void undoMove(BoardState& board, const MoveUndo& undoState) {
     }
 
     // Undo promotions
+    // Add back to source   
+    zobristHash ^= zobristTable[undoState.from_piece_type][fromSquare];
     if (special >= PROMOTION_QUEEN && special <= PROMOTION_BISHOP) {
-        // Remove the promoted piece
-        zobristHash ^=
-            zobristTable[undoState.promotedPieceType][toSquare];           // Remove promoted piece
-        zobristHash ^= zobristTable[undoState.from_piece_type][toSquare];  // Add pawn back
+        // Remove promoted piece
+        zobristHash ^= zobristTable[undoState.promotedPieceType][toSquare];
         board.updateBitboard(undoState.promotedPieceType, undoState.promotedBitboard);
+        int pawnType = board.getTurn() ? WHITE_PAWNS : BLACK_PAWNS;
+        uint64_t pawnBitboard = board.getBitboard(pawnType);
+        pawnBitboard |= (1ULL << fromSquare);
+        board.updateBitboard(pawnType, pawnBitboard);
     }
-
+    else{
+        zobristHash ^= zobristTable[undoState.from_piece_type][toSquare];    // Remove from destination
+        board.updateBitboard(undoState.from_piece_type, undoState.fromBitboard);
+    }
     // Restore metadata
     if (undoState.enPassantState != NO_EN_PASSANT) {
         int enPassantFile = undoState.enPassantState % 8;

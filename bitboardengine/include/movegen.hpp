@@ -21,5 +21,6 @@ uint64_t generateThreatMask(int pieceType, int attackerSquare, uint64_t allOccup
 
 bool is_in_check(const BoardState& board);
 std::vector<uint16_t> allLegalMoves(const BoardState& board);
+std::vector<uint16_t> generateKingMoves(const BoardState& board);
 
 #endif // MOVEGEN_HPP

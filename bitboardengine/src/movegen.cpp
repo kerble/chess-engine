@@ -33,7 +33,13 @@ static uint64_t generateRayMask(int kingSquare, int attackerSquare, uint64_t occ
         kingRayMask = Rmagic(kingSquare, attackerOnlyBoard);  // Rank/file ray
     }
 
-    // Generate the attack mask of the attacker based on the full board occupancy
+    // Generate the attack mask of the attacker based on the passed-in occupancy
+    // We need to make sure that if this occupancy is only the enemy occupancy we
+    // include the king's square to prevent a bug in positions like this:
+    // https://i.imgur.com/25slm58.png
+    // If we pass the total occupancy this will do nothing.
+    uint64_t kingOnlyBoard = (1ULL << kingSquare);
+    occupancy |= kingOnlyBoard;
     uint64_t attackerAttackMask =
         isDiagonalAttack ? Bmagic(attackerSquare, occupancy) : Rmagic(attackerSquare, occupancy);
 
@@ -92,7 +98,7 @@ static int findAttackerSquare(const BoardState& board) {
     }
 
     // If no attackers are found, throw an error
-    std::cout << board << std::endl;
+// std::cout << board << std::endl;
     throw std::logic_error(
         "No attacker found for the king. This function is only called when there is an attacker. "
         "Something is wrong");
@@ -255,8 +261,7 @@ static int numCheckers(const BoardState& board) {
     while (remainingPawns) {
         int pawnSquare = popLSB(remainingPawns);
         if (pawnThreatsTable[pawnSquare] & kingBB) {
-            //impossible for a discovered attack on a checking pawn move
-            return 1;
+            checkers += 1;
         }
     }
     // Check threats from opponent bishops and queens (diagonal attacks)
@@ -358,10 +363,10 @@ static std::vector<uint64_t> detectPinnedPieces(int kingSquare, uint64_t enemyOc
     std::vector<uint64_t> pinMasks;  // To store pin masks for pinned pieces
 
     // Diagonal (bishop and queen) attacks
-    uint64_t bishopAttackMask = Bmagic(kingSquare, enemyOccupancy);  // King's diagonal attacks
-    uint64_t diagonalAttackers =
-        bishopAttackMask & (enemyBishops | enemyQueens);  // Only bishops/queens
-
+    // King's diagonal attacks
+    uint64_t bishopAttackMask = Bmagic(kingSquare, enemyOccupancy);
+    // Only bishops/queens
+    uint64_t diagonalAttackers = bishopAttackMask & (enemyBishops | enemyQueens);
     while (diagonalAttackers) {
         int attackerSquare = popLSB(diagonalAttackers);
 
@@ -381,11 +386,14 @@ static std::vector<uint64_t> detectPinnedPieces(int kingSquare, uint64_t enemyOc
     uint64_t rookAttackMask = Rmagic(kingSquare, enemyOccupancy);  // King's straight-line attacks
     uint64_t straightAttackers = rookAttackMask & (enemyRooks | enemyQueens);  // Only rooks/queens
 
+    // std::cout << "straight attackers:\n" << bitboardToBinaryString(straightAttackers) << std::endl;
+
     while (straightAttackers) {
         int attackerSquare = popLSB(straightAttackers);
 
         // Generate ray between the king and attacker
         uint64_t rayMask = generateRayMask(kingSquare, attackerSquare, enemyOccupancy);
+        // std::cout << "raymask:\n" << bitboardToBinaryString(rayMask) << std::endl;
         rayMask |= (1ULL << attackerSquare);  // Include attacker square
 
         // Find allied pieces on this ray
@@ -402,7 +410,7 @@ static std::vector<uint64_t> detectPinnedPieces(int kingSquare, uint64_t enemyOc
 Generates a vector of encoded king moves, minus castling.
 Can be used in either check or not check.
 */
-static std::vector<uint16_t> generateKingMoves(const BoardState& board) {
+std::vector<uint16_t> generateKingMoves(const BoardState& board) {
     std::vector<uint16_t> legalKingMoves;
 
     // Determine the side to move

@@ -26,10 +26,11 @@ struct MoveUndo {
 std::string moveToString(uint16_t move);
 
 MoveUndo storeUndoData(const BoardState& board, uint16_t move);
-void applyMove(BoardState& board, uint16_t move);
+MoveUndo applyMove(BoardState& board, uint16_t move);
 void undoMove(BoardState& board, const MoveUndo& undoState);
 
 uint16_t encodeMove(int fromSquare, int toSquare, int special = SPECIAL_NONE);
 void decodeMove(uint16_t move, int& fromSquare, int& toSquare, int& special);
-
+// extern int moves_looked_at;
+// extern int evaluated_positions;
 #endif  // MOVE_HPP
