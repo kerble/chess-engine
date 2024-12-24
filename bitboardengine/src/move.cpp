@@ -39,12 +39,12 @@ std::string moveToString(uint16_t move) {
         case PROMOTION_BISHOP:
             moveString << "b";
             break;
-        case CASTLING_KINGSIDE:
-            moveString.str("O-O");
-            break;
-        case CASTLING_QUEENSIDE:
-            moveString.str("O-O-O");
-            break;
+        // case CASTLING_KINGSIDE:
+        //     moveString.str("O-O");
+        //     break;
+        // case CASTLING_QUEENSIDE:
+        //     moveString.str("O-O-O");
+        //     break;
         case EN_PASSANT:
             moveString << "e.p.";
             break;
@@ -99,7 +99,8 @@ int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite) {
     std::cout << "crashing inside of findPieceType on this board:\n";
     std::cout << board << std::endl;
     std::cout << bitboardToBinaryString(squareMask) << std::endl;
-    std::cout << isWhite << std::endl;
+    std::string side = isWhite ? "white" : "black";
+    std::cout << "Looking for " << side << " pieces\n";
     // If no match is found, this should not happen in normal circumstances
     throw std::runtime_error("Square mask does not match any piece bitboard");
 }
@@ -407,4 +408,102 @@ void undoMove(BoardState& board, const MoveUndo& undoState) {
 
     // Update the Zobrist hash
     board.setZobristHash(zobristHash);
+}
+
+// Function to determine if a move is a castling move
+bool isCastlingMove(int fromSquare, int toSquare, const BoardState& board) {
+    // Check if the move is one of the standard castling patterns
+    if (!((fromSquare == 4 && (toSquare == 6 || toSquare == 2)) ||
+          (fromSquare == 60 && (toSquare == 62 || toSquare == 58)))) {
+        return false;
+    }
+
+    // Verify that the piece at fromSquare is a king
+    uint64_t fromMask = (1ULL << fromSquare);
+    int pieceType = findPieceType(board, fromMask, board.getTurn());
+    return pieceType == WHITE_KINGS || pieceType == BLACK_KINGS;
+}
+
+// Function to determine if a move is kingside castling
+bool isKingsideCastling(int fromSquare, int toSquare, const BoardState& board) {
+    // Use isCastlingMove to validate it's a castling move
+    if (!isCastlingMove(fromSquare, toSquare, board)) {
+        return false;
+    }
+
+    // Check if the destination square is g1 or g8
+    return toSquare == 6 || toSquare == 62;
+}
+
+// Function to determine if a move is an en passant move
+bool isEnPassantMove(const BoardState& board, int fromSquare, int toSquare) {
+    // Ensure the moving piece is a pawn
+    uint64_t fromMask = (1ULL << fromSquare);
+    int pieceType = findPieceType(board, fromMask, board.getTurn());
+    if (pieceType != WHITE_PAWNS && pieceType != BLACK_PAWNS) {
+        return false;
+    }
+
+    // Check if the move targets the en passant square
+    return toSquare == board.getEnPassant();
+}
+
+// Function to determine if a move is a double pawn push
+bool isDoublePawnPush(const BoardState& board, int fromSquare, int toSquare) {
+    // Ensure the moving piece is a pawn
+    uint64_t fromMask = (1ULL << fromSquare);
+    int pieceType = findPieceType(board, fromMask, board.getTurn());
+    if (pieceType != WHITE_PAWNS && pieceType != BLACK_PAWNS) {
+        return false;
+    }
+
+    // Check if the move is a two-square forward push
+    int rankDifference = toSquare / 8 - fromSquare / 8;
+    return (rankDifference == 2 || rankDifference == -2);
+}
+
+// Function to encode a UCI move into your uint16_t move format
+uint16_t encodeUCIMove(BoardState& board, const std::string& uciMove) {
+    if (uciMove.length() < 4 || uciMove.length() > 5) {
+        throw std::invalid_argument("Invalid UCI move format: " + uciMove);
+    }
+
+    int fromSquare = squareFromAlgebraic(uciMove.substr(0, 2));  // e.g., "e2"
+    int toSquare = squareFromAlgebraic(uciMove.substr(2, 2));    // e.g., "e4"
+
+    int special = SPECIAL_NONE;
+
+    // Handle special cases
+    if (uciMove.length() == 5) {  // Promotion move, e.g., e7e8q
+        char promotionPiece = uciMove[4];
+        switch (promotionPiece) {
+            case 'q':
+                special = PROMOTION_QUEEN;
+                break;
+            case 'n':
+                special = PROMOTION_KNIGHT;
+                break;
+            case 'r':
+                special = PROMOTION_ROOK;
+                break;
+            case 'b':
+                special = PROMOTION_BISHOP;
+                break;
+            default:
+                throw std::invalid_argument("Invalid promotion piece: " +
+                                            std::string(1, promotionPiece));
+        }
+    } else {
+        // Detect other special moves based on the board state
+        if (isCastlingMove(fromSquare, toSquare, board)) {
+            special = isKingsideCastling(fromSquare, toSquare, board) ? CASTLING_KINGSIDE
+                                                                     : CASTLING_QUEENSIDE;
+        } else if (isEnPassantMove(board, fromSquare, toSquare)) {
+            special = EN_PASSANT;
+        } else if (isDoublePawnPush(board, fromSquare, toSquare)) {
+            special = DOUBLE_PAWN_PUSH;
+        }
+    }
+
+    return encodeMove(fromSquare, toSquare, special);
 }

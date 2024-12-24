@@ -5,14 +5,14 @@
 // Material scores
 constexpr double MATERIAL_SCORES[] = {
     1.0,   // White Pawn
-    3.2,   // White Knight
-    3.3,   // White Bishop
+    3.25,   // White Knight
+    3.25,   // White Bishop
     5.0,   // White Rook
     9.0,   // White Queen
     200,   // White King
     -1.0,  // Black Pawn
-    -3.2,  // Black Knight
-    -3.3,  // Black Bishop
+    -3.25,  // Black Knight
+    -3.25,  // Black Bishop
     -5.0,  // Black Rook
     -9.0,  // Black Queen
     -200   // Black King

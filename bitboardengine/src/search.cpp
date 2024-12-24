@@ -63,12 +63,23 @@ bool stalemate(const BoardState& board, const std::vector<uint16_t>& legalMoves)
     return legalMoves.empty() && !is_in_check(board);
 }
 
-GameResult gameOver(const BoardState& board, const std::vector<uint16_t>& legalMoves) {
+bool threefold(const TranspositionTable& table, uint64_t current_pos_hash) {
+    return false;
+    auto it = table.find(current_pos_hash);
+    if (it != table.end()) {
+        // If the hash exists in the table, check its visitCount
+        return it->second.visitCount >= 3;
+    }
+    return false;  // If the hash is not found, it's not a repetition
+}
+
+GameResult gameOver(const BoardState& board, const std::vector<uint16_t>& legalMoves, TranspositionTable& table) {
     if (whiteCheckmate(board, legalMoves)) return BLACK_WINS;
     if (blackCheckmate(board, legalMoves)) return WHITE_WINS;
     if (stalemate(board, legalMoves)) return DRAW_STALEMATE;
     if (fiftyMoveRule(board)) return DRAW_50_MOVE_RULE;
     if (insufficientMaterial(board)) return DRAW_INSUFFICIENT_MATERIAL;
+    if (threefold(table, board.getZobristHash())) return DRAW_THREEFOLD_REPETITION;
     return ONGOING;
 }
 
@@ -76,7 +87,7 @@ std::vector<uint16_t> orderMoves(BoardState& board, const std::vector<uint16_t>&
     std::vector<std::pair<int, uint16_t>> scoredMoves;
 
     for (const auto& move : moves) {
-        int score = 0;
+        double score = 0;
         int fromSquare, toSquare, special;
         decodeMove(move, fromSquare, toSquare, special);
 
@@ -93,26 +104,20 @@ std::vector<uint16_t> orderMoves(BoardState& board, const std::vector<uint16_t>&
         
         // Compare the value of the capturing piece with the captured piece
         if (isCapture){
-            //Always treat the captured piece as if they're white and 
-            //abs() the capturing piece so we are comparing positive piece
-            //values with positive piece values, not negatives.
+            // Do a static exchange evalaution on the capture.
             int capturedPieceType = findPieceType(board, toSquareMask, !board.getTurn());
-            int capturingPieceValue = abs(MATERIAL_SCORES[fromPieceType]);
-            int capturedPieceValue = abs(MATERIAL_SCORES[capturedPieceType]);
-            
-            //
-            score += std::max(capturedPieceValue - capturingPieceValue, 0);
+            score = see(board, toSquare, capturedPieceType, fromSquare, fromPieceType);
         }
 
-        if (isCheck) score += 50;
-        if (special == PROMOTION_QUEEN) score += 90;
-        else if (special == PROMOTION_KNIGHT) score += 50;
-        else if (special == PROMOTION_ROOK) score += 40;
-        else if (special == PROMOTION_BISHOP) score += 30;
-        else if (special == CASTLING_KINGSIDE || special == CASTLING_QUEENSIDE) score += 40;
+        if (isCheck) score += 5;
+        if (special == PROMOTION_QUEEN) score += 9;
+        else if (special == PROMOTION_KNIGHT) score += 5;
+        else if (special == PROMOTION_ROOK) score += 4;
+        else if (special == PROMOTION_BISHOP) score += 3;
+        else if (special == CASTLING_KINGSIDE || special == CASTLING_QUEENSIDE) score += 4;
 
-        if(fromPieceType == WHITE_PAWNS || fromPieceType == BLACK_PAWNS) score -= 10;
-        else if(fromPieceType == WHITE_KINGS || fromPieceType == BLACK_KINGS) score -= 10;
+        if(fromPieceType == WHITE_PAWNS || fromPieceType == BLACK_PAWNS) score -= 1;
+        else if(fromPieceType == WHITE_KINGS || fromPieceType == BLACK_KINGS) score -= 1;
 
         scoredMoves.emplace_back(score, move);
     }
@@ -136,102 +141,297 @@ std::vector<uint16_t> orderMoves(BoardState& board, const std::vector<uint16_t>&
     //     depth = 1;
     // }
 // Negamax with alpha-beta pruning
-// double negamax(BoardState& board, int depth, double alpha, double beta, int color) {
-//     std::vector<uint16_t> legalMoves = orderMoves(board, allLegalMoves(board));
-//     double maxScore = -999999;
 
-//     // Base case: if the depth is 0 or game over, return the evaluation of the position
-//     GameResult result = gameOver(board, legalMoves);
-//     if(result != ONGOING){
-//         if (result == WHITE_WINS || result == BLACK_WINS) {
-//             // std::cout << "found checkmate" << std::endl;
-//             return (999999 - depth) * color;
-//         }
-//         if (result == DRAW_STALEMATE || result == DRAW_50_MOVE_RULE ||
-//             result == DRAW_INSUFFICIENT_MATERIAL) {
-//             return 0;
-//         }
-//     }
-//     if (depth == 0) {
-//         return color * evaluate(board);
-//     }
-//     int i = 0;
-//     // std::cout << board;
-//     for (const uint16_t& move : legalMoves) {
-//         // Apply the move
-//         BoardState test = board;
-//         MoveUndo undoData = applyMove(test, move);
 
-//         // Recursively calculate the negamax score
-//         double score = -negamax(test, depth - 1, -beta, -alpha, -color);
-//         // Undo the move
-//         undoMove(test, undoData);
+uint64_t attacksTo(const BoardState& board, const uint64_t occupancy, int toSquare) {
+    uint64_t kings   = board.getBitboard(WHITE_KINGS)   | board.getBitboard(BLACK_KINGS);
+    uint64_t knights = board.getBitboard(WHITE_KNIGHTS) | board.getBitboard(BLACK_KNIGHTS);
+    uint64_t bishops = board.getBitboard(WHITE_BISHOPS) | board.getBitboard(BLACK_BISHOPS);
+    uint64_t queens  = board.getBitboard(WHITE_QUEENS)  | board.getBitboard(BLACK_QUEENS);
+    uint64_t rooks   = board.getBitboard(WHITE_ROOKS)   | board.getBitboard(BLACK_ROOKS);
+    uint64_t wpawns  = board.getBitboard(WHITE_PAWNS);
+    uint64_t bpawns  = board.getBitboard(BLACK_PAWNS);
 
-//         maxScore = std::max(maxScore, score);
-//         alpha = std::max(alpha, score);
+    uint64_t attackers = 0;
+    // King attacks
+    attackers |= king_threats_table[toSquare] & kings;
 
-//         // // Alpha-beta pruning
-//         if (alpha >= beta) {
-//             break;
-//         }
-//     }
+    // Knight attacks
+    attackers |= knight_threats_table[toSquare] & knights;
 
-//     return maxScore;
-// }
+    // Pawn attacks
+    attackers |= wpawn_threats_table[toSquare] & bpawns;
+    attackers |= bpawn_threats_table[toSquare] & wpawns;
+
+    // Bishop and Queen attacks (diagonal)
+    attackers |= Bmagic(toSquare, occupancy) & (bishops | queens);
+
+    // Rook and Queen attacks (orthogonal)
+    attackers |= Rmagic(toSquare, occupancy) & (rooks | queens);
+    // std::cout << "attackers is: " << bitboardToBinaryString(attackers) << "\n";
+    return attackers;
+}
+
+uint64_t getLeastValuablePiece(const BoardState& board, uint64_t attadef, bool isWhite) {
+    uint64_t leastValuablePiece = 0;
+    double minValue = 201;  // Start with a high initial value
+    attadef = attadef & board.getOccupancy(isWhite);
+    while (attadef) {
+        // Isolate the least significant bit (one piece in attadef)
+        uint64_t squareMask = attadef & -attadef;
+        // Find the piece type at the square
+        int pieceType = findPieceType(board, squareMask, isWhite);
+
+        // Get the absolute material score for the piece
+        double pieceValue = std::abs(MATERIAL_SCORES[pieceType]);
+
+        // Update the least valuable piece if this one has a smaller value
+        if (pieceValue < minValue) {
+            minValue = pieceValue;
+            leastValuablePiece = squareMask;
+        }
+
+        // Clear the least significant bit to move to the next piece
+        attadef &= attadef - 1;
+    }
+
+    return leastValuablePiece;  // Return the bitboard of the least valuable piece
+}
+
+uint64_t considerXrays(const BoardState& board, uint64_t occ, int toSquare) {
+    uint64_t xrayAttackers = 0;
+
+    // Bishop and Queen diagonal x-rays
+    uint64_t bishopXrays = Bmagic(toSquare, occ) &
+                           (board.getBitboard(WHITE_BISHOPS) | board.getBitboard(BLACK_BISHOPS) |
+                            board.getBitboard(WHITE_QUEENS) | board.getBitboard(BLACK_QUEENS));
+    xrayAttackers |= bishopXrays;
+
+    // Rook and Queen orthogonal x-rays
+    uint64_t rookXrays =
+        Rmagic(toSquare, occ) & (board.getBitboard(WHITE_ROOKS) | board.getBitboard(BLACK_ROOKS) |
+                                 board.getBitboard(WHITE_QUEENS) | board.getBitboard(BLACK_QUEENS));
+    xrayAttackers |= rookXrays;
+    xrayAttackers &= occ;
+    // std::cout << "xrayAttackers: " << bitboardToBinaryString(xrayAttackers) << "\n";
+    return xrayAttackers;
+}
+
+/* Static Exchange Evaluation (SEE)
+  Statically determine if a capture results in a material gain or loss.
+  Used for move ordering for more efficient pruning and also for QSearch
+*/
+double see(const BoardState& board, int toSq, int target, int frSq, int aPiece) {
+    double gain[32];
+    int d = 0;
+    uint64_t kings   = board.getBitboard(WHITE_KINGS)   | board.getBitboard(BLACK_KINGS);
+    uint64_t knights = board.getBitboard(WHITE_KNIGHTS) | board.getBitboard(BLACK_KNIGHTS);
+    uint64_t bishops = board.getBitboard(WHITE_BISHOPS) | board.getBitboard(BLACK_BISHOPS);
+    uint64_t queens  = board.getBitboard(WHITE_QUEENS)  | board.getBitboard(BLACK_QUEENS);
+    uint64_t rooks   = board.getBitboard(WHITE_ROOKS)   | board.getBitboard(BLACK_ROOKS);
+    uint64_t wpawns  = board.getBitboard(WHITE_PAWNS);
+    uint64_t bpawns  = board.getBitboard(BLACK_PAWNS);
+    uint64_t mayXray = wpawns | bpawns | bishops | rooks | queens;
+    uint64_t fromBoard = 1ULL << frSq;
+    uint64_t occ = board.getAllOccupancy();
+    uint64_t attadef = attacksTo(board, occ, toSq);
+    // std::cout << "attadef = " << bitboardToBinaryString(attadef) << "\n";
+    gain[d] = std::abs(MATERIAL_SCORES[target]);
+    // std::cout << "gain[" << d << "]: " << gain[d] << "\n";
+    bool isWhite = board.getTurn();
+    do {
+        d++;                                    // next depth and side
+        isWhite = !isWhite;
+        gain[d] = std::abs(MATERIAL_SCORES[aPiece]) - gain[d - 1];  // speculative store, if defended
+        // std::cout << "gain[" << d << "]: = " << gain[d] << " ; " << std::abs(MATERIAL_SCORES[aPiece]) << " - " << gain[d - 1] << "\n";
+        attadef ^= fromBoard;                   // reset bit in set to traverse
+        // std::cout << "attadef after removing leastsignificant attackers" << bitboardToBinaryString(attadef)
+                //   << "\n";
+        occ ^= fromBoard;                       // reset bit in temporary occupancy (for x-Rays)
+        if (fromBoard & mayXray){
+            attadef |= considerXrays(board, occ, toSq);
+            // std::cout << "attadef after adding x-ray attackers" << bitboardToBinaryString(attadef) << "\n";
+        }
+        fromBoard = getLeastValuablePiece(board, attadef, isWhite);
+        // std::cout << "fromBoard after getLeastValuablePiece: \n" << bitboardToBinaryString(fromBoard) << "\n";
+        if (fromBoard){
+            aPiece = findPieceType(board, fromBoard, isWhite);
+            // std::cout << "finding " << aPiece << "\n";
+        }
+        // std::cout << "ending loop\n";
+    } while (fromBoard);
+    while (--d) gain[d - 1] = -std::max(-gain[d - 1], gain[d]);
+    return gain[0];
+}
+
+std::vector<uint16_t> goodCaptureOrChecks(BoardState& board, const std::vector<uint16_t>& moves) {
+    std::vector<uint16_t> result;
+    // std::cout << "board inside of gcoc\n" << board << "\n";
+    for (uint16_t move : moves) {
+        // Check if the position is in check after the move
+        MoveUndo undoState = applyMove(board, move);
+        bool check = is_in_check(board);
+        undoMove(board, undoState);
+        if (check) {
+            result.push_back(move);
+        }
+        else {
+            int toSq, frSq, special;
+            decodeMove(move, frSq, toSq, special);
+            //If the tosquare is occupied by a piece already, it's a capture.
+            // std::cout << bitboardToBinaryString(board.getAllOccupancy()) << "\n";
+            if ((1ULL << toSq) & board.getAllOccupancy()) {
+                // Use SEE to evaluate the capture
+                // std::cout << "here\n";
+                // std::cout << moveToString(move) << "\n";
+                int movingPiece = findPieceType(board, (1ULL << frSq), board.getTurn());
+                int capturedPiece = findPieceType(board, (1ULL << toSq), !board.getTurn());
+                // std::cout << "here2\n";
+
+                if (see(board, toSq, capturedPiece, frSq, movingPiece) > 0) {
+                    result.push_back(move);
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+double QSearch(BoardState& board, double alpha, double beta) {
+    double standPat = evaluate(board);
+    if (standPat >= beta) return beta;
+    if (standPat > alpha) alpha = standPat;
+    // std::cout << board << "\nHas legal moves:\n";
+    std::vector<uint16_t> allMoves = allLegalMoves(board);
+    std::vector<uint16_t> checksAndCaptures = goodCaptureOrChecks(board, allMoves);
+    for (uint16_t move : checksAndCaptures) {
+        MoveUndo undoState = applyMove(board, move);
+        double score = -QSearch(board, -beta, -alpha);
+        undoMove(board, undoState);
+
+        if (score >= beta) return beta;
+        if (score > alpha) alpha = score;
+    }
+
+    return alpha;
+}
+
+
+int tttable_uses = 0;
 bool debugnm = false;
 bool debuggbm = false;
-double negamax(BoardState& board, int depth, double alpha, double beta) {
+double negamax(BoardState& board, TranspositionTable& table, int depth, double alpha, double beta) {
+    uint64_t zobristHash = board.getZobristHash();
+
     std::vector<uint16_t> legalMoves = orderMoves(board, allLegalMoves(board));
-    double maxScore = -999999;
+    double bestScore = -999999;
+    uint16_t bestMove = 0;
+    // std::cout << "size before updating: " << table.size() << "\n";
+    updateTranspositionTable(table, zobristHash); // Just increment the visit count
+    // std::cout << "size after updating: " << table.size() << "\n";
 
     // Base case: if the depth is 0 or game over, return the evaluation of the position
-    GameResult result = gameOver(board, legalMoves);
+    GameResult result = gameOver(board, legalMoves, table);
+    int moveIndex = 0;
     if (result != ONGOING) {
         if (result == WHITE_WINS || result == BLACK_WINS) {
             if (debugnm) std::cout << "Game over at depth " << depth << ": ";
-            if (debugnm) std::cout << ((result == WHITE_WINS) ? "White wins" : "Black wins") << "\n";
-            return (-250 - depth);
+            if (debugnm)
+                std::cout << ((result == WHITE_WINS) ? "White wins" : "Black wins") << "\n";
+            if (debugnm) std::cout << board << "\n";
+            double mateScore = -250 - depth;
+            updateTranspositionTable(table, zobristHash, 0, mateScore, depth);
+            decrementVisitCount(table, zobristHash);
+            return mateScore;
         }
         if (result == DRAW_STALEMATE || result == DRAW_50_MOVE_RULE ||
-            result == DRAW_INSUFFICIENT_MATERIAL) {
-            if (debugnm) std::cout << result << "\n";
-            if (debugnm) std::cout << "Game drawn at depth " << depth << "\n";
+            result == DRAW_INSUFFICIENT_MATERIAL || result == DRAW_THREEFOLD_REPETITION) {
+            if (debugnm){
+                std::cout << result << "\n";
+                std::cout << "Game drawn at depth " << depth << "due to \n";
+                switch (result)
+                {
+                case DRAW_STALEMATE:
+                    std::cout << "STALEMATE\n";
+                    break;
+                case DRAW_INSUFFICIENT_MATERIAL:
+                    std::cout << "DRAW_INSUFFICIENT_MATERIAL\n";
+                    break;
+                case DRAW_50_MOVE_RULE:
+                    std::cout << "50MOVERULE\n";
+                    break;
+                case DRAW_THREEFOLD_REPETITION:
+                    std::cout << "THREEFOLD\n";
+                    break;
+                default:
+                    break;
+                }
+            }
+            updateTranspositionTable(table, zobristHash, 0, 0, depth);
+            decrementVisitCount(table, zobristHash);
             return 0;
         }
     }
     if (depth == 0) {
-        double eval = evaluate(board);
+        // double eval = evaluate(board);
+        double eval = QSearch(board, alpha, beta);
+        updateTranspositionTable(table, zobristHash, 0, eval, depth);
         if (debugnm) std::cout << "Evaluating leaf node at depth 0: eval = " << eval << "\n";
+        if (debugnm) std::cout << board << "\n";
+        decrementVisitCount(table, zobristHash);
         return eval;
     }
 
-    int moveIndex = 0;  // Track the move index for debugging
-    for (const uint16_t& move : legalMoves) {
-        // BoardState test = board;
-        MoveUndo undoData = applyMove(board, move);
-
-        if (debugnm) std::cout << "Depth " << depth << ", Move " << moveIndex << ": " << moveToString(move)
-                  << "\n";
-        double score = -negamax(board, depth - 1, -beta, -alpha);
-        undoMove(board, undoData);
-
-        if (debugnm) std::cout << "Depth " << depth << ", Move " << moveToString(move) << " -> nm score = " << score
-                  << ", alpha = " << alpha << ", beta = " << beta << "\n";
-
-        maxScore = std::max(maxScore, score);
-        alpha = std::max(alpha, score);
-
-        if (alpha >= beta) {
-            if (debugnm) std::cout << "Pruned branch at move " << moveToString(move) << " (alpha >= beta)\n";
-            break;
+    auto it = table.find(zobristHash);
+    if (it != table.end()) {
+        // If depth is sufficient, use stored evaluation
+        const TranspositionTableEntry& entry = it->second;
+        if (entry.depth >= depth) {
+            tttable_uses++;
+            if (debugnm){
+                std::cout << "using ttable on already-found-position\n" << board << "\n";
+                std::cout << "already searched on depth " << entry.depth << " which is better than current depth " << depth << "\n";
+                std::cout << "returning " << entry.evaluation << "\n";
+            }
+            if (entry.evaluation <= alpha) return alpha;  // Fail-low
+            if (entry.evaluation >= beta) return beta;    // Fail-high
+            decrementVisitCount(table, zobristHash);
+            return entry.evaluation;                      // Exact score
         }
-        moveIndex++;
     }
 
-    return maxScore;
+    for (const uint16_t& move : legalMoves) {
+        MoveUndo undoData = applyMove(board, move);
+        if (debugnm)
+            std::cout << "Depth " << depth << ", Move " << moveIndex << ": " << moveToString(move)
+                      << "\n";
+        double score = -negamax(board, table, depth - 1, -beta, -alpha);
+        undoMove(board, undoData);
+
+        if (score > bestScore) {
+            bestScore = score;
+            if (score > alpha) {
+                alpha = score;
+            }
+            bestMove = move;
+        }
+        if (alpha >= beta) {
+            break;  // Beta-cutoff
+        }
+    }
+
+    // Update transposition table with the best score
+    updateTranspositionTable(table, zobristHash, bestMove, bestScore, depth);
+
+    // Decrement visit count after recursion completes
+    decrementVisitCount(table, zobristHash);
+
+    return bestScore;
 }
 
-uint16_t getBestMove(BoardState& board, int depth) {
+// Returns the best move for the current player based on the negamax algorithm
+uint16_t getBestMove(BoardState& board, TranspositionTable& table, int depth) {
     std::vector<uint16_t> legalMoves = orderMoves(board, allLegalMoves(board));
 
     uint16_t bestMove = 0;
@@ -244,9 +444,10 @@ uint16_t getBestMove(BoardState& board, int depth) {
     for (const uint16_t& move : legalMoves) {
         // BoardState test = board;
         MoveUndo undoData = applyMove(board, move);
-
+        
         if (debuggbm) std::cout << "Testing move " << moveIndex << ": " << moveToString(move) << "\n";
-        double score = -negamax(board, depth - 1, -beta, -alpha);
+        // Determine if we're maximizing for white (positive) or black (negative)
+        double score = -negamax(board, table, depth - 1, -beta, -alpha);
         undoMove(board, undoData);
 
         if (debuggbm) std::cout << "Move " << moveToString(move) << " -> gbm score = " << score
@@ -265,37 +466,7 @@ uint16_t getBestMove(BoardState& board, int depth) {
     }
     if (debuggbm) std::cout << "Best move at depth " << depth << ": " << moveToString(bestMove)
               << " with score = " << bestScore << "\n";
-
+    // std::cout << "transposition table size " << table.size() << "\n";
+    // std::cout << "Transposition table uses " << tttable_uses << "\n";
     return bestMove;
 }
-
-// Returns the best move for the current player based on the negamax algorithm
-// uint16_t getBestMove(BoardState& board, int depth) {
-//     std::vector<uint16_t> legalMoves = orderMoves(board, allLegalMoves(board));
-
-//     uint16_t bestMove = 0;
-//     double bestScore = -INT_MAX;
-//     double alpha = -999999;
-//     double beta = 999999;
-//     int color = board.getTurn() ? 1 : -1;
-//     int i = 0;
-//     for (const uint16_t& move : legalMoves) {
-//         // Apply the move
-//         // MoveUndo undoData = storeUndoData(board, move);
-//         BoardState test = board;
-//         MoveUndo undoData = applyMove(test, move);
-
-//         // Get the negamax score for the move
-//         double score = -negamax(test, depth - 1, -beta, -alpha, -color);
-//         undoMove(test, undoData);
-
-//         // Update the best score and best move
-//         if (score > bestScore) {
-//             bestScore = score;
-//             bestMove = move;
-//         }
-//         alpha = std::max(alpha, score);
-//     }
-//     return bestMove;
-// }
-

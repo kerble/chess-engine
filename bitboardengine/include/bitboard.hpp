@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <iostream> //remove later
+#include <unordered_map>
 
 enum PieceIndex {
     WHITE_PAWNS = 0,
@@ -35,14 +36,24 @@ constexpr int CASTLING_KINGSIDE = 0x5;   // 0101
 constexpr int CASTLING_QUEENSIDE = 0x6;  // 0110
 constexpr int DOUBLE_PAWN_PUSH = 0x7;    // 0111
 constexpr int EN_PASSANT = 0x8;          // 1000, capturing e.p
-constexpr int NO_EN_PASSANT = 64;
 
+// Used for FEN/zobrist hashing
+constexpr int NO_EN_PASSANT = 64;
+constexpr int UNKNOWN_EVAL = 1234.0;
 // Declare Zobrist tables
 extern uint64_t zobristTable[12][64];
 extern uint64_t zobristCastling[16];
 extern uint64_t zobristEnPassant[8];
 extern uint64_t zobristSideToMove;
 
+struct TranspositionTableEntry {
+    int visitCount = 0;       // Default visit count
+    uint16_t bestMove = 0;    // Default best move (0 indicates unknown)
+    double evaluation = UNKNOWN_EVAL;  // Default evaluation
+    int depth = -1;           // Default depth (-1 indicates uninitialized depth)
+};
+
+using TranspositionTable = std::unordered_map<uint64_t, TranspositionTableEntry>;
 
 // Bit manipulation functions
 uint64_t set_bit(uint64_t bitboard, int square);
@@ -126,5 +137,12 @@ BoardState parseFEN(const std::string& fen);
 // Function to initialize the Zobrist tables
 void initializeZobrist();
 uint64_t computeZobristHash(const BoardState& board);
+void updateTranspositionTable(TranspositionTable& table, uint64_t hash, uint16_t bestMove = 0,
+                              double evaluation = UNKNOWN_EVAL, int depth = -1);
+
+bool getTranspositionTableEntry(const TranspositionTable& table, uint64_t hash,
+                                TranspositionTableEntry& entry);
+                          
+void decrementVisitCount(TranspositionTable& table, uint64_t hash);
 
 #endif // BITBOARD_HPP

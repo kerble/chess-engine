@@ -31,6 +31,14 @@ void undoMove(BoardState& board, const MoveUndo& undoState);
 
 uint16_t encodeMove(int fromSquare, int toSquare, int special = SPECIAL_NONE);
 void decodeMove(uint16_t move, int& fromSquare, int& toSquare, int& special);
+uint16_t encodeUCIMove(BoardState& board, const std::string& uciMove);
+
+bool isKingsideCastling(int fromSquare, int toSquare, const BoardState& board);
+    // Function to determine if a move is a castling move
+bool isCastlingMove(int fromSquare, int toSquare, const BoardState& board);
+
+bool isDoublePawnPush(const BoardState& board, int fromSquare, int toSquare);
+bool isEnPassantMove(const BoardState& board, int fromSquare, int toSquare);
 // extern int moves_looked_at;
 // extern int evaluated_positions;
 #endif  // MOVE_HPP

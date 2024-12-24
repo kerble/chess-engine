@@ -301,7 +301,7 @@ BoardState::BoardState()
       white_occupancy(0),
       black_occupancy(0),
       all_occupancy(0),
-      en_passant_square(0),     // No en passant square at start
+      en_passant_square(NO_EN_PASSANT),// No en passant square at start
       castling_rights(0b1111),  // All castling rights enabled (KQkq)
       is_white_turn(true),      // White moves first
       halfmove_clock(0),        // No halfmoves at the start
@@ -507,4 +507,32 @@ uint64_t computeZobristHash(const BoardState& board) {
     }
 
     return hash;
+}
+
+void updateTranspositionTable(TranspositionTable& table, uint64_t hash, uint16_t bestMove,
+                              double evaluation, int depth) {
+    auto& entry = table[hash];  // Access or create the entry
+    entry.visitCount++;
+    if (depth > entry.depth) {  // Only update if depth is greater
+        entry.bestMove = bestMove;
+        entry.evaluation = evaluation;
+        entry.depth = depth;
+    }
+}
+
+bool getTranspositionTableEntry(const TranspositionTable& table, uint64_t hash,
+                                TranspositionTableEntry& entry) {
+    auto it = table.find(hash);
+    if (it != table.end()) {
+        entry = it->second;
+        return true;
+    }
+    return false;
+}
+
+void decrementVisitCount(TranspositionTable& table, uint64_t hash) {
+    auto it = table.find(hash);
+    if (it != table.end() && it->second.visitCount > 0) {
+        it->second.visitCount--;
+    }
 }
