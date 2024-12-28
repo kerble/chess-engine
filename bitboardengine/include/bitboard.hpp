@@ -7,7 +7,7 @@
 #include <string>
 #include <sstream>
 #include <stdexcept>
-#include <iostream> //remove later
+#include <iostream>
 #include <unordered_map>
 
 enum PieceIndex {
@@ -55,22 +55,13 @@ struct TranspositionTableEntry {
 
 using TranspositionTable = std::unordered_map<uint64_t, TranspositionTableEntry>;
 
-// Bit manipulation functions
-uint64_t set_bit(uint64_t bitboard, int square);
-
-// FEN utility
-int charToPieceIndex(char piece);
-char pieceIndexToChar(int pieceIndex);
-
-std::string bitboardToBinaryString(uint64_t bitboard);
-
-// Function to parse castling rights from FEN string (e.g., "KQkq") to uint64_t
-int parseCastlingRights(const std::string& rights);
 
 // Function to convert algebraic notation (e.g., "e3") to square index (0-63)
-int squareFromAlgebraic(const std::string& algebraic);
+int algebraicToSquare(const std::string& algebraic);
 
-std::string algebraicFromSquare(int square);
+std::string squareToAlgebraic(int square);
+
+std::string bitboardToBinaryString(uint64_t bitboard);
 
 class BoardState {
 private:
@@ -96,27 +87,27 @@ public:
     void updateBitboard(int pieceType, uint64_t newBitboard);
     uint64_t getBitboard(int pieceType) const;
 
-    // Methods to update and check game state (castling, en-passant, etc.)
-    void revokeKingsideCastlingRights(BoardState& board, bool isWhite);
-    void revokeQueensideCastlingRights(BoardState& board, bool isWhite);
-    void revokeAllCastlingRights(BoardState& board, bool isWhite);
+    void setOccupancy(uint64_t white, uint64_t black);
+    uint64_t getOccupancy(bool isWhite) const;
+    uint64_t getAllOccupancy() const;
+    void updateOccupancy();
+
     void setCastlingRights(uint8_t rights);
+    void revokeKingsideCastlingRights(bool isWhite);
+    void revokeQueensideCastlingRights(bool isWhite);
+    void revokeAllCastlingRights(bool isWhite);
     uint8_t getCastlingRights() const;
+
     bool canCastleKingside(bool isWhite) const;
     bool canCastleQueenside(bool isWhite) const;
-    int getMoveCounter() const;
+
     void setEnPassant(uint8_t square);
     uint8_t getEnPassant() const;
+
     void flipTurn();
     void setTurn(bool isWhiteTurn);
     bool getTurn() const;
 
-    void setOccupancy(uint64_t white, uint64_t black);
-    uint64_t getOccupancy(bool isWhite) const;
-    uint64_t getWhiteOccupancy() const;
-    uint64_t getBlackOccupancy() const;
-    uint64_t getAllOccupancy() const;
-    void updateOccupancy();
 
     void setMoveCounters(int halfmove, int fullmove);
     int getHalfmoveClock() const;
@@ -124,19 +115,30 @@ public:
 
     void setZobristHash(uint64_t zobrist);
     uint64_t getZobristHash() const;
+
     friend bool operator==(const BoardState& lhs, const BoardState& rhs);
+    // Overload the << operator to visualize the board state
+    friend std::ostream& operator<<(std::ostream& os, const BoardState& board);
 };
 
-// Overload the << operator to visualize the board state
-std::ostream& operator<<(std::ostream& os, const BoardState& board);
-int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite);
+// FEN utility
+
+int charToPieceIndex(char piece);
+
+// Function to parse castling rights from FEN string (e.g., "KQkq") to uint64_t
+int parseCastlingRights(const std::string& rights);
+
 uint64_t findBitboard(const BoardState& board, int square, bool isWhite);
 int getPromotedPieceType(int special, bool isWhite);
 BoardState parseFEN(const std::string& fen);
 
+
+
+
 // Function to initialize the Zobrist tables
 void initializeZobrist();
 uint64_t computeZobristHash(const BoardState& board);
+
 void updateTranspositionTable(TranspositionTable& table, uint64_t hash, uint16_t bestMove = 0,
                               double evaluation = UNKNOWN_EVAL, int depth = -1);
 

@@ -1,6 +1,5 @@
 #include "bitboard.hpp"
 
-uint64_t set_bit(uint64_t bitboard, int square) { return bitboard | (1ULL << square); }
 
 uint64_t zobristTable[12][64];
 uint64_t zobristCastling[16];
@@ -41,39 +40,8 @@ int charToPieceIndex(char piece) {
     }
 }
 
-char pieceIndexToChar(int pieceIndex) {
-    switch (pieceIndex) {
-        case WHITE_PAWNS:
-            return 'P';
-        case WHITE_KNIGHTS:
-            return 'N';
-        case WHITE_BISHOPS:
-            return 'B';
-        case WHITE_ROOKS:
-            return 'R';
-        case WHITE_QUEENS:
-            return 'Q';
-        case WHITE_KINGS:
-            return 'K';
-        case BLACK_PAWNS:
-            return 'p';
-        case BLACK_KNIGHTS:
-            return 'n';
-        case BLACK_BISHOPS:
-            return 'b';
-        case BLACK_ROOKS:
-            return 'r';
-        case BLACK_QUEENS:
-            return 'q';
-        case BLACK_KINGS:
-            return 'k';
-        default:
-            return '.';  // Empty square
-    }
-}
-
 // Function to convert algebraic notation to square index (0-63)
-int squareFromAlgebraic(const std::string& algebraic) {
+int algebraicToSquare(const std::string& algebraic) {
     if (algebraic.size() != 2) {
         return -1;  // Invalid input (not a valid square)
     }
@@ -95,7 +63,7 @@ int squareFromAlgebraic(const std::string& algebraic) {
 }
 
 // Function to convert square index (0-63) to algebraic notation
-std::string algebraicFromSquare(int square) {
+std::string squareToAlgebraic(int square) {
     if (square < 0 || square > 63) {
         throw std::out_of_range("Square must be between 0 and 63");
     }
@@ -187,13 +155,13 @@ std::ostream& operator<<(std::ostream& os, const BoardState& board) {
     os << "Halfmove counter: " << board.getHalfmoveClock() << '\n';
 
     // Display fullmove counter
-    os << "Fullmove counter: " << board.getMoveCounter() << '\n';
+    os << "Fullmove counter: " << board.getFullmoveNumber() << '\n';
 
     // Display en passant target square
     int epSquare = board.getEnPassant();
     os << "En passant target square: ";
     if (epSquare != NO_EN_PASSANT) {
-        os << algebraicFromSquare(epSquare);
+        os << squareToAlgebraic(epSquare);
     } else {
         os << '-';
     }
@@ -257,7 +225,7 @@ BoardState parseFEN(const std::string& fen) {
             uint64_t currentBitboard = board.getBitboard(pieceType);
 
             // Add the piece to the piece bitboard
-            uint64_t newBitboard = set_bit(currentBitboard, square);
+            uint64_t newBitboard = (1ULL << square);
             board.updateBitboard(pieceType, newBitboard);
 
             // Update the appropriate occupancy bitboard
@@ -279,7 +247,7 @@ BoardState parseFEN(const std::string& fen) {
     board.setCastlingRights(castling);
 
     // Parse en passant square
-    int enPassantSq = (enPassant == "-") ? NO_EN_PASSANT : squareFromAlgebraic(enPassant);
+    int enPassantSq = (enPassant == "-") ? NO_EN_PASSANT : algebraicToSquare(enPassant);
     board.setEnPassant(enPassantSq);
 
     // Parse move counters
@@ -355,9 +323,6 @@ uint64_t BoardState::getBitboard(int pieceType) const {
     }
     return bitboards[pieceType];
 }
-uint64_t BoardState::getOccupancy(bool isWhite) const {
-    return isWhite ? white_occupancy : black_occupancy;
-}
 // Set castling rights using a bitmask
 void BoardState::setCastlingRights(uint8_t rights) { castling_rights = rights; }
 
@@ -381,21 +346,20 @@ bool BoardState::canCastleQueenside(bool isWhite) const {
     }
 }
 
-void BoardState::revokeKingsideCastlingRights(BoardState& board, bool isWhite) {
+void BoardState::revokeKingsideCastlingRights(bool isWhite) {
     castling_rights &= ~(isWhite ? 0b01 : 0b0100);
 }
 
-void BoardState::revokeQueensideCastlingRights(BoardState& board, bool isWhite) {
+void BoardState::revokeQueensideCastlingRights(bool isWhite) {
     castling_rights &= ~(isWhite ? 0b10 : 0b1000);
 }
 
-void BoardState::revokeAllCastlingRights(BoardState& board, bool isWhite) {
+void BoardState::revokeAllCastlingRights(bool isWhite) {
     castling_rights &= ~(isWhite ? 0b11 : 0b1100);
 }
 // Get the en passant square (returns the square where en passant is possible, 0-63)
 // NO_EN_PASSANT if not possible
 uint8_t BoardState::getEnPassant() const { return en_passant_square; }
-int BoardState::getMoveCounter() const { return fullmove_number; }
 uint8_t BoardState::getCastlingRights() const { return castling_rights; }
 // Set the turn (true = white's turn, false = black's turn)
 void BoardState::setTurn(bool isWhiteTurn) { is_white_turn = isWhiteTurn; }
@@ -403,18 +367,15 @@ void BoardState::flipTurn(){ is_white_turn = !is_white_turn;}
 // Get the current turn (true = white's turn, false = black's turn)
 bool BoardState::getTurn() const { return is_white_turn; }
 
+uint64_t BoardState::getOccupancy(bool isWhite) const {
+    return isWhite ? white_occupancy : black_occupancy;
+}
 // Set the occupancy bitboards for white and black
 void BoardState::setOccupancy(uint64_t white, uint64_t black) {
     white_occupancy = white;
     black_occupancy = black;
     all_occupancy = white | black;  // All occupied squares (white + black pieces)
 }
-
-// Get the occupancy of white pieces (bitboard)
-uint64_t BoardState::getWhiteOccupancy() const { return white_occupancy; }
-
-// Get the occupancy of black pieces (bitboard)
-uint64_t BoardState::getBlackOccupancy() const { return black_occupancy; }
 
 uint64_t BoardState::getAllOccupancy() const { return all_occupancy; }
 

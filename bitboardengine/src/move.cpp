@@ -23,7 +23,7 @@ std::string moveToString(uint16_t move) {
     decodeMove(move, fromSquare, toSquare, special);
 
     std::ostringstream moveString;
-    moveString << algebraicFromSquare(fromSquare) << algebraicFromSquare(toSquare);
+    moveString << squareToAlgebraic(fromSquare) << squareToAlgebraic(toSquare);
 
     // Append promotion character or special move indicator if applicable
     switch (special) {
@@ -102,6 +102,7 @@ int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite) {
     std::string side = isWhite ? "white" : "black";
     std::cout << "Looking for " << side << " pieces\n";
     // If no match is found, this should not happen in normal circumstances
+    std::terminate();
     throw std::runtime_error("Square mask does not match any piece bitboard");
 }
 
@@ -162,7 +163,7 @@ MoveUndo storeUndoData(const BoardState& board, uint16_t move) {
     undoState.enPassantState = board.getEnPassant();
     undoState.castlingRights = board.getCastlingRights();
     undoState.halfMoveClock = board.getHalfmoveClock();
-    undoState.moveCounter = board.getMoveCounter();
+    undoState.moveCounter = board.getFullmoveNumber();
     undoState.move = move;
     return undoState;
 }
@@ -191,9 +192,22 @@ MoveUndo applyMove(BoardState& board, uint16_t move) {
     // std::cout << "done calling find piece type in applymove \n";
 
     uint64_t fromPieceBitboard = findBitboard(board, fromSquare, isWhite);
+    int enemyRooks = isWhite ? BLACK_ROOKS : WHITE_ROOKS;
+    int enemyKingSideCorner = isWhite ? 63 : 7;
+    int enemyQueenSideCorner = isWhite ? 56 : 0;
+    //If we're capturing a rook in the corner
+    if(destMask & board.getBitboard(enemyRooks)){
+        if(toSquare == enemyKingSideCorner){
+            board.revokeKingsideCastlingRights(!isWhite);
+        }
+        else if (toSquare == enemyQueenSideCorner){
+            board.revokeQueensideCastlingRights(!isWhite);
+        }
+    }
 
-    // Handle promotions
-    if (special >= PROMOTION_QUEEN && special <= PROMOTION_BISHOP) {
+    // Remove the piece from the old square and add it to the new one
+    // If promoting, remove the pawn and add the promoted piece.
+    if (special >= PROMOTION_QUEEN && special <= PROMOTION_BISHOP) { 
         int promotionType = getPromotedPieceType(special, isWhite);
         uint64_t promotionBitboard = board.getBitboard(promotionType) | destMask;
         zobristHash ^= zobristTable[promotionType][toSquare];
@@ -203,7 +217,8 @@ MoveUndo applyMove(BoardState& board, uint16_t move) {
         zobristHash ^= zobristTable[pieceType][fromSquare];
         fromPieceBitboard ^= sourceMask;  // remove the pawn
         board.updateBitboard(pieceType, fromPieceBitboard);
-    } else {
+    }
+    else {
         // Move the piece
         fromPieceBitboard ^= sourceMask;  // Remove from source
         fromPieceBitboard |= destMask;    // Add to destination
@@ -262,15 +277,15 @@ MoveUndo applyMove(BoardState& board, uint16_t move) {
     // Handle castling rights
     if (pieceType == WHITE_KINGS || pieceType == BLACK_KINGS) {
         // King moves, clear both castling rights for this side
-        board.revokeAllCastlingRights(board, isWhite);
+        board.revokeAllCastlingRights(isWhite);
     }
 
     if (pieceType == WHITE_ROOKS || pieceType == BLACK_ROOKS) {
         // Rook moves, clear corresponding castling right
         if (fromSquare == (isWhite ? 0 : 56)) {  // Queenside rook
-            board.revokeQueensideCastlingRights(board, isWhite);
+            board.revokeQueensideCastlingRights(isWhite);
         } else if (fromSquare == (isWhite ? 7 : 63)) {  // Kingside rook
-            board.revokeKingsideCastlingRights(board, isWhite);
+            board.revokeKingsideCastlingRights(isWhite);
         }
     }
 
@@ -468,8 +483,8 @@ uint16_t encodeUCIMove(BoardState& board, const std::string& uciMove) {
         throw std::invalid_argument("Invalid UCI move format: " + uciMove);
     }
 
-    int fromSquare = squareFromAlgebraic(uciMove.substr(0, 2));  // e.g., "e2"
-    int toSquare = squareFromAlgebraic(uciMove.substr(2, 2));    // e.g., "e4"
+    int fromSquare = algebraicToSquare(uciMove.substr(0, 2));  // e.g., "e2"
+    int toSquare = algebraicToSquare(uciMove.substr(2, 2));    // e.g., "e4"
 
     int special = SPECIAL_NONE;
 

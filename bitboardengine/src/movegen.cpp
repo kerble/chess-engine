@@ -140,15 +140,14 @@ void initKingThreatMasks() {
         int rank = square / 8;  // Row number (0-7)
         int file = square % 8;  // Column number (0-7)
 
-        // Add valid threat squares to the mask using set_bit
-        if (rank > 0 && file > 0) threat_mask = set_bit(threat_mask, square - 9);  // Up-left
-        if (rank > 0) threat_mask = set_bit(threat_mask, square - 8);              // Up
-        if (rank > 0 && file < 7) threat_mask = set_bit(threat_mask, square - 7);  // Up-right
-        if (file < 7) threat_mask = set_bit(threat_mask, square + 1);              // Right
-        if (rank < 7 && file < 7) threat_mask = set_bit(threat_mask, square + 9);  // Down-right
-        if (rank < 7) threat_mask = set_bit(threat_mask, square + 8);              // Down
-        if (rank < 7 && file > 0) threat_mask = set_bit(threat_mask, square + 7);  // Down-left
-        if (file > 0) threat_mask = set_bit(threat_mask, square - 1);              // Left
+        if (rank > 0 && file > 0) threat_mask |= (1ULL << square - 9);  // Up-left
+        if (rank > 0)             threat_mask |= (1ULL << square - 8);  // Up
+        if (rank > 0 && file < 7) threat_mask |= (1ULL << square - 7);  // Up-right
+        if (file < 7)             threat_mask |= (1ULL << square + 1);  // Right
+        if (rank < 7 && file < 7) threat_mask |= (1ULL << square + 9);  // Down-right
+        if (rank < 7)             threat_mask |= (1ULL << square + 8);  // Down
+        if (rank < 7 && file > 0) threat_mask |= (1ULL << square + 7);  // Down-left
+        if (file > 0)             threat_mask |= (1ULL << square - 1);  // Left
 
         // Store the computed threat mask
         king_threats_table[square] = threat_mask;
@@ -164,17 +163,14 @@ void initKnightThreatMasks() {
         int file = square % 8;  // Column number (0-7)
 
         // All potential knight moves
-        if (rank > 1 && file > 0) threat_mask = set_bit(threat_mask, square - 17);  // Up 2, Left 1
-        if (rank > 1 && file < 7) threat_mask = set_bit(threat_mask, square - 15);  // Up 2, Right 1
-        if (rank > 0 && file > 1) threat_mask = set_bit(threat_mask, square - 10);  // Up 1, Left 2
-        if (rank > 0 && file < 6) threat_mask = set_bit(threat_mask, square - 6);   // Up 1, Right 2
-        if (rank < 7 && file > 1) threat_mask = set_bit(threat_mask, square + 6);  // Down 1, Left 2
-        if (rank < 7 && file < 6)
-            threat_mask = set_bit(threat_mask, square + 10);  // Down 1, Right 2
-        if (rank < 6 && file > 0)
-            threat_mask = set_bit(threat_mask, square + 15);  // Down 2, Left 1
-        if (rank < 6 && file < 7)
-            threat_mask = set_bit(threat_mask, square + 17);  // Down 2, Right 1
+        if (rank > 1 && file > 0) threat_mask |= (1ULL << square - 17);  // Up 2, Left 1
+        if (rank > 1 && file < 7) threat_mask |= (1ULL << square - 15);  // Up 2, Right 1
+        if (rank > 0 && file > 1) threat_mask |= (1ULL << square - 10);  // Up 1, Left 2
+        if (rank > 0 && file < 6) threat_mask |= (1ULL << square - 6);   // Up 1, Right 2
+        if (rank < 7 && file > 1) threat_mask |= (1ULL << square + 6);   // Down 1, Left 2
+        if (rank < 7 && file < 6) threat_mask |= (1ULL << square + 10);  // Down 1, Right 2
+        if (rank < 6 && file > 0) threat_mask |= (1ULL << square + 15);  // Down 2, Left 1
+        if (rank < 6 && file < 7) threat_mask |= (1ULL << square + 17);  // Down 2, Right 1
 
         // Store the computed threat mask
         knight_threats_table[square] = threat_mask;
@@ -191,12 +187,12 @@ void initPawnThreatMasks() {
         int file = square % 8;  // Column number (0-7)
 
         // White pawn threats (upward diagonals)
-        if (file > 0) white_threats = set_bit(white_threats, square + 7);  // Up-left
-        if (file < 7) white_threats = set_bit(white_threats, square + 9);  // Up-right
+        if (file > 0) white_threats |= (1ULL << square + 7);  // Up-left
+        if (file < 7) white_threats |= (1ULL << square + 9);  // Up-right
 
         // Black pawn threats (downward diagonals)
-        if (file > 0) black_threats = set_bit(black_threats, square - 9);  // Down-left
-        if (file < 7) black_threats = set_bit(black_threats, square - 7);  // Down-right
+        if (file > 0) black_threats |= (1ULL << square - 9);  // Down-left
+        if (file < 7) black_threats |= (1ULL << square - 7);  // Down-right
 
         // Store in the respective tables
         wpawn_threats_table[square] = white_threats;
@@ -421,7 +417,7 @@ std::vector<uint16_t> generateKingMoves(const BoardState& board) {
     int kingSquare = __builtin_ctzll(kingBB);
 
     // Allied and enemy occupancies
-    uint64_t alliedOccupancy = isWhite ? board.getWhiteOccupancy() : board.getBlackOccupancy();
+    uint64_t alliedOccupancy = board.getOccupancy(isWhite);
     uint64_t allOccupancy = board.getAllOccupancy();
 
     // We remove the king from the board to calculate threats properly
@@ -576,10 +572,17 @@ static uint64_t generatePawnBitboard(
 
     // Capture moves
     std::array<uint64_t, 64> pawnThreatsTable = isWhite ? wpawn_threats_table : bpawn_threats_table;
-    uint64_t captures = pawnThreatsTable[pawnSquare] &
-                        (enemyOccupancy | (enPassantSquare != -1 ? (1ULL << enPassantSquare) : 0));
+    // uint64_t enPassantMask = 0;
+    // if(enPassantSquare != NO_EN_PASSANT){
+    //     enPassantMask = (1ULL << enPassantSquare);
+    // }
+    uint64_t enPassantMask = enPassantSquare != NO_EN_PASSANT ? (1ULL << enPassantSquare) : 0;
+    // std::cout << "en passant square: " << enPassantSquare << "\n";
+    // std::cout << "epm\n" << bitboardToBinaryString(enPassantMask) << "\n";
+    uint64_t captures = pawnThreatsTable[pawnSquare] & (enemyOccupancy | enPassantMask);
+    // std::cout << "eo or ep:\n" << bitboardToBinaryString((enemyOccupancy | enPassantMask)) << "\n";
+    // std::cout << "captures:\n" << bitboardToBinaryString(captures) << "\n";
     moves |= captures;
-
     return moves;
 }
 
@@ -623,8 +626,7 @@ static std::vector<uint16_t> generateMovesNoCheckNoPins(const BoardState& board)
         uint64_t pieceBB = board.getBitboard(pieceType);
         while (pieceBB) {
             int fromSquare = popLSB(pieceBB);
-            uint64_t alliedOccupancy =
-                isWhite ? board.getWhiteOccupancy() : board.getBlackOccupancy();
+            uint64_t alliedOccupancy = board.getOccupancy(isWhite);
             uint64_t legalDestinations =
                 generateThreatMask(pieceType, fromSquare, board.getAllOccupancy()) &
                 ~alliedOccupancy;
@@ -639,7 +641,9 @@ static std::vector<uint16_t> generateMovesNoCheckNoPins(const BoardState& board)
     uint64_t pawnsBB = board.getBitboard(isWhite ? WHITE_PAWNS : BLACK_PAWNS);
     while (pawnsBB) {
         int pawnSquare = popLSB(pawnsBB);
-        uint64_t enemyOccupancy = isWhite ? board.getBlackOccupancy() : board.getWhiteOccupancy();
+        uint64_t enemyOccupancy = board.getOccupancy(!isWhite);
+
+        // std::cout << "enemyocc:\n" << bitboardToBinaryString(enemyOccupancy);
         uint64_t pawnMoves = generatePawnBitboard(
             pawnSquare, enemyOccupancy, board.getAllOccupancy(), board.getEnPassant(), isWhite);
 
@@ -667,7 +671,7 @@ static std::vector<uint16_t> generateMovesNoCheckWithPins(const BoardState& boar
     bool isWhite = board.getTurn();
     int knights = isWhite ? WHITE_KNIGHTS : BLACK_KNIGHTS;
     int queens = isWhite ? WHITE_QUEENS : BLACK_QUEENS;
-    uint64_t alliedOccupancy = isWhite ? board.getWhiteOccupancy() : board.getBlackOccupancy();
+    uint64_t alliedOccupancy = board.getOccupancy(isWhite);
 
     // Generate a bitboard of all pinned pieces
     uint64_t pinnedPieces = 0;
@@ -708,7 +712,8 @@ static std::vector<uint16_t> generateMovesNoCheckWithPins(const BoardState& boar
     uint64_t pawnsBB = board.getBitboard(isWhite ? WHITE_PAWNS : BLACK_PAWNS);
     while (pawnsBB) {
         int pawnSquare = popLSB(pawnsBB);
-        uint64_t enemyOccupancy = isWhite ? board.getBlackOccupancy() : board.getWhiteOccupancy();
+        uint64_t enemyOccupancy = board.getOccupancy(!isWhite);
+
         uint64_t pawnMoves = generatePawnBitboard(
             pawnSquare, enemyOccupancy, board.getAllOccupancy(), board.getEnPassant(), isWhite);
 
@@ -760,7 +765,7 @@ static std::vector<uint16_t> generateMovesSingleCheckNoPins(const BoardState& bo
 
     int knights = isWhite ? WHITE_KNIGHTS : BLACK_KNIGHTS;
     int queens = isWhite ? WHITE_QUEENS : BLACK_QUEENS;
-    uint64_t enemyOccupancy = isWhite ? board.getBlackOccupancy() : board.getWhiteOccupancy();
+    uint64_t enemyOccupancy = board.getOccupancy(!isWhite);
 
     // Generate moves for all pieces except pawns and king
     for (int pieceType = knights; pieceType <= queens; ++pieceType) {
@@ -819,7 +824,7 @@ static std::vector<uint16_t> generateMovesSingleCheckWithPins(const BoardState& 
         attackerBitBoard ? attackerBitBoard  // Mask for knight or pawn check
                          : generateRayMask(kingSquare, attackerSquare, board.getAllOccupancy());
 
-    uint64_t enemyOccupancy = isWhite ? board.getBlackOccupancy() : board.getWhiteOccupancy();
+    uint64_t enemyOccupancy = board.getOccupancy(!isWhite);
 
     // Generate moves for all pieces except the king and pawns (from knights to queens)
     for (int pieceType = (isWhite ? WHITE_KNIGHTS : BLACK_KNIGHTS);
@@ -893,9 +898,9 @@ std::vector<uint16_t> allLegalMoves(const BoardState& board) {
 
     // Extract the king's position
     int kingSquare = __builtin_ctzll(kingBB);
+    uint64_t enemyOccupancy = board.getOccupancy(!isWhite);
+    uint64_t alliedOccupancy = board.getOccupancy(isWhite);
 
-    uint64_t alliedOccupancy = isWhite ? board.getWhiteOccupancy() : board.getBlackOccupancy();
-    uint64_t enemyOccupancy = isWhite ? board.getBlackOccupancy() : board.getWhiteOccupancy();
     uint64_t enemyQueens =
         isWhite ? board.getBitboard(BLACK_QUEENS) : board.getBitboard(WHITE_QUEENS);
     uint64_t enemyRooks = isWhite ? board.getBitboard(BLACK_ROOKS) : board.getBitboard(WHITE_ROOKS);

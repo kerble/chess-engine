@@ -9,8 +9,8 @@ bool whiteCheckmate(const BoardState& board, const std::vector<uint16_t>& legalM
 }
 
 bool insufficientMaterial(const BoardState& board) {
-    uint64_t whitePieces = board.getWhiteOccupancy();
-    uint64_t blackPieces = board.getBlackOccupancy();
+    uint64_t whitePieces = board.getOccupancy(true);
+    uint64_t blackPieces = board.getOccupancy(false);
 
     // Remove kings from occupancy
     uint64_t nonKingWhite = whitePieces & ~board.getBitboard(WHITE_KINGS);
@@ -282,7 +282,6 @@ std::vector<uint16_t> goodCaptureOrChecks(BoardState& board, const std::vector<u
             // std::cout << bitboardToBinaryString(board.getAllOccupancy()) << "\n";
             if ((1ULL << toSq) & board.getAllOccupancy()) {
                 // Use SEE to evaluate the capture
-                // std::cout << "here\n";
                 // std::cout << moveToString(move) << "\n";
                 int movingPiece = findPieceType(board, (1ULL << frSq), board.getTurn());
                 int capturedPiece = findPieceType(board, (1ULL << toSq), !board.getTurn());
@@ -319,7 +318,7 @@ double QSearch(BoardState& board, double alpha, double beta) {
 
 
 int tttable_uses = 0;
-bool debugnm = false;
+bool debugnm = true;
 bool debuggbm = false;
 double negamax(BoardState& board, TranspositionTable& table, int depth, double alpha, double beta) {
     uint64_t zobristHash = board.getZobristHash();
@@ -377,8 +376,8 @@ double negamax(BoardState& board, TranspositionTable& table, int depth, double a
         // double eval = evaluate(board);
         double eval = QSearch(board, alpha, beta);
         updateTranspositionTable(table, zobristHash, 0, eval, depth);
-        if (debugnm) std::cout << "Evaluating leaf node at depth 0: eval = " << eval << "\n";
-        if (debugnm) std::cout << board << "\n";
+        // if (debugnm) std::cout << "Evaluating leaf node at depth 0: eval = " << eval << "\n";
+        // if (debugnm) std::cout << board << "\n";
         decrementVisitCount(table, zobristHash);
         return eval;
     }

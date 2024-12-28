@@ -39,6 +39,8 @@ bool isCastlingMove(int fromSquare, int toSquare, const BoardState& board);
 
 bool isDoublePawnPush(const BoardState& board, int fromSquare, int toSquare);
 bool isEnPassantMove(const BoardState& board, int fromSquare, int toSquare);
+int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite);
+
 // extern int moves_looked_at;
 // extern int evaluated_positions;
 #endif  // MOVE_HPP

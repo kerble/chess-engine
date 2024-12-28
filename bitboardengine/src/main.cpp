@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
     // cout << materialGain << endl;
     */
     // auto start = std::chrono::high_resolution_clock::now();
-    uint16_t bestMove = getBestMove(board, table, 6);
+    uint16_t bestMove = getBestMove(board, table, 5);
     // auto end = std::chrono::high_resolution_clock::now();
     // std::chrono::duration<double> elapsed = end - start;
     // std::cout << "Time taken: " << elapsed.count() << " seconds" << std::endl;
