@@ -40,6 +40,8 @@ bool isCastlingMove(int fromSquare, int toSquare, const BoardState& board);
 bool isDoublePawnPush(const BoardState& board, int fromSquare, int toSquare);
 bool isEnPassantMove(const BoardState& board, int fromSquare, int toSquare);
 int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite);
+uint64_t findBitboard(const BoardState& board, int square, bool isWhite);
+int getPromotedPieceType(int special, bool isWhite);
 
 // extern int moves_looked_at;
 // extern int evaluated_positions;

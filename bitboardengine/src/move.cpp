@@ -90,11 +90,7 @@ MoveUndo storeUndoData(const BoardState& board, uint16_t move) {
 }
 
 MoveUndo applyMove(BoardState& board, uint16_t move) {
-// std::cout << "board before storing \n" << board << "\n";
     MoveUndo moveData = storeUndoData(board, move);
-    // std::cout << "board after storing " << board << "\n";
-    // moves_looked_at++;
-    // std::cout << "playing " << moveToString(move) << std::endl;
     uint64_t zobristHash = board.getZobristHash();
     // Decode the move
     int fromSquare, toSquare, special;
@@ -108,9 +104,7 @@ MoveUndo applyMove(BoardState& board, uint16_t move) {
     bool revoked_castling_rights = false;
 
     // Identify the moving piece and its bitboard
-    // std::cout << "calling find piece type in applymove \n";
     int pieceType = findPieceType(board, sourceMask, isWhite);
-    // std::cout << "done calling find piece type in applymove \n";
 
     uint64_t fromPieceBitboard = findBitboard(board, fromSquare, isWhite);
     int enemyRooks = isWhite ? BLACK_ROOKS : WHITE_ROOKS;
@@ -160,9 +154,7 @@ MoveUndo applyMove(BoardState& board, uint16_t move) {
         board.updateBitboard(enemyPawnType, enemyPawnBitboard);
         capture = true;
     } else if (board.getOccupancy(!isWhite) & destMask) {
-        // std::cout << "calling find piece type in applymove2 \n";
         int capturedType = findPieceType(board, destMask, !isWhite);
-        // std::cout << "done calling find piece type in applymove2 \n";
         uint64_t capturedBitboard = board.getBitboard(capturedType);
         capturedBitboard ^= destMask;  // remove the bit
         zobristHash ^= zobristTable[capturedType][toSquare];
@@ -265,7 +257,6 @@ MoveUndo applyMove(BoardState& board, uint16_t move) {
 }
 
 void undoMove(BoardState& board, const MoveUndo& undoState) {
-    // std::cout << "undoing " << moveToString(undoState.move) << std::endl;
     // Retrieve the current Zobrist hash
     uint64_t zobristHash = board.getZobristHash();
 

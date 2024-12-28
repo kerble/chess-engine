@@ -11,8 +11,6 @@ extern std::array<uint64_t, 64> knight_threats_table;
 extern std::array<uint64_t, 64> wpawn_threats_table;
 extern std::array<uint64_t, 64> bpawn_threats_table;
 
-
-
 void initKingThreatMasks();
 void initKnightThreatMasks();
 void initPawnThreatMasks();

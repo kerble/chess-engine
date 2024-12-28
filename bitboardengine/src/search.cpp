@@ -111,9 +111,9 @@ std::vector<uint16_t> orderMoves(BoardState& board, const std::vector<uint16_t>&
 
         if (isCheck) score += 5;
         if (special == PROMOTION_QUEEN) score += 9;
-        else if (special == PROMOTION_KNIGHT) score += 5;
-        else if (special == PROMOTION_ROOK) score += 4;
-        else if (special == PROMOTION_BISHOP) score += 3;
+        else if (special == PROMOTION_KNIGHT) score += 2;
+        else if (special == PROMOTION_ROOK) score -= 4;
+        else if (special == PROMOTION_BISHOP) score -= 3;
         else if (special == CASTLING_KINGSIDE || special == CASTLING_QUEENSIDE) score += 4;
 
         if(fromPieceType == WHITE_PAWNS || fromPieceType == BLACK_PAWNS) score -= 1;
@@ -133,15 +133,6 @@ std::vector<uint16_t> orderMoves(BoardState& board, const std::vector<uint16_t>&
 
     return orderedMoves;
 }
-
-    // if (is_in_check(board)) {
-    //     // look a little further if we're in check.
-    //     // wouldn't want to miss a checkmate on the
-    //     // edge of our evaluation depth.
-    //     depth = 1;
-    // }
-// Negamax with alpha-beta pruning
-
 
 uint64_t attacksTo(const BoardState& board, const uint64_t occupancy, int toSquare) {
     uint64_t kings   = board.getBitboard(WHITE_KINGS)   | board.getBitboard(BLACK_KINGS);
@@ -168,7 +159,6 @@ uint64_t attacksTo(const BoardState& board, const uint64_t occupancy, int toSqua
 
     // Rook and Queen attacks (orthogonal)
     attackers |= Rmagic(toSquare, occupancy) & (rooks | queens);
-    // std::cout << "attackers is: " << bitboardToBinaryString(attackers) << "\n";
     return attackers;
 }
 
@@ -213,7 +203,6 @@ uint64_t considerXrays(const BoardState& board, uint64_t occ, int toSquare) {
                                  board.getBitboard(WHITE_QUEENS) | board.getBitboard(BLACK_QUEENS));
     xrayAttackers |= rookXrays;
     xrayAttackers &= occ;
-    // std::cout << "xrayAttackers: " << bitboardToBinaryString(xrayAttackers) << "\n";
     return xrayAttackers;
 }
 
@@ -235,38 +224,30 @@ double see(const BoardState& board, int toSq, int target, int frSq, int aPiece) 
     uint64_t fromBoard = 1ULL << frSq;
     uint64_t occ = board.getAllOccupancy();
     uint64_t attadef = attacksTo(board, occ, toSq);
-    // std::cout << "attadef = " << bitboardToBinaryString(attadef) << "\n";
     gain[d] = std::abs(MATERIAL_SCORES[target]);
-    // std::cout << "gain[" << d << "]: " << gain[d] << "\n";
     bool isWhite = board.getTurn();
     do {
         d++;                                    // next depth and side
         isWhite = !isWhite;
         gain[d] = std::abs(MATERIAL_SCORES[aPiece]) - gain[d - 1];  // speculative store, if defended
-        // std::cout << "gain[" << d << "]: = " << gain[d] << " ; " << std::abs(MATERIAL_SCORES[aPiece]) << " - " << gain[d - 1] << "\n";
         attadef ^= fromBoard;                   // reset bit in set to traverse
-        // std::cout << "attadef after removing leastsignificant attackers" << bitboardToBinaryString(attadef)
-                //   << "\n";
         occ ^= fromBoard;                       // reset bit in temporary occupancy (for x-Rays)
         if (fromBoard & mayXray){
             attadef |= considerXrays(board, occ, toSq);
-            // std::cout << "attadef after adding x-ray attackers" << bitboardToBinaryString(attadef) << "\n";
         }
         fromBoard = getLeastValuablePiece(board, attadef, isWhite);
-        // std::cout << "fromBoard after getLeastValuablePiece: \n" << bitboardToBinaryString(fromBoard) << "\n";
         if (fromBoard){
             aPiece = findPieceType(board, fromBoard, isWhite);
-            // std::cout << "finding " << aPiece << "\n";
         }
-        // std::cout << "ending loop\n";
     } while (fromBoard);
     while (--d) gain[d - 1] = -std::max(-gain[d - 1], gain[d]);
     return gain[0];
 }
 
+// Reduces a list of all legal moves to a list of favorable captures, promotions, and checks
+// Used to continually search deeper on positions until they are stable.
 std::vector<uint16_t> goodCaptureOrChecks(BoardState& board, const std::vector<uint16_t>& moves) {
     std::vector<uint16_t> result;
-    // std::cout << "board inside of gcoc\n" << board << "\n";
     for (uint16_t move : moves) {
         // Check if the position is in check after the move
         MoveUndo undoState = applyMove(board, move);
@@ -274,22 +255,24 @@ std::vector<uint16_t> goodCaptureOrChecks(BoardState& board, const std::vector<u
         undoMove(board, undoState);
         if (check) {
             result.push_back(move);
+            continue;
         }
-        else {
-            int toSq, frSq, special;
-            decodeMove(move, frSq, toSq, special);
-            //If the tosquare is occupied by a piece already, it's a capture.
-            // std::cout << bitboardToBinaryString(board.getAllOccupancy()) << "\n";
-            if ((1ULL << toSq) & board.getAllOccupancy()) {
-                // Use SEE to evaluate the capture
-                // std::cout << moveToString(move) << "\n";
-                int movingPiece = findPieceType(board, (1ULL << frSq), board.getTurn());
-                int capturedPiece = findPieceType(board, (1ULL << toSq), !board.getTurn());
-                // std::cout << "here2\n";
 
-                if (see(board, toSq, capturedPiece, frSq, movingPiece) > 0) {
-                    result.push_back(move);
-                }
+        int toSq, frSq, special;
+        decodeMove(move, frSq, toSq, special);
+        if (special == PROMOTION_QUEEN) {
+            result.push_back(move);
+            continue;
+        }
+
+        //If the tosquare is occupied by a piece already, it's a capture.
+        if ((1ULL << toSq) & board.getAllOccupancy()) {
+            // Use SEE to evaluate the capture
+            int movingPiece = findPieceType(board, (1ULL << frSq), board.getTurn());
+            int capturedPiece = findPieceType(board, (1ULL << toSq), !board.getTurn());
+
+            if (see(board, toSq, capturedPiece, frSq, movingPiece) > 0) {
+                result.push_back(move);
             }
         }
     }
@@ -301,7 +284,6 @@ double QSearch(BoardState& board, double alpha, double beta) {
     double standPat = evaluate(board);
     if (standPat >= beta) return beta;
     if (standPat > alpha) alpha = standPat;
-    // std::cout << board << "\nHas legal moves:\n";
     std::vector<uint16_t> allMoves = allLegalMoves(board);
     std::vector<uint16_t> checksAndCaptures = goodCaptureOrChecks(board, allMoves);
     for (uint16_t move : checksAndCaptures) {
@@ -326,9 +308,7 @@ double negamax(BoardState& board, TranspositionTable& table, int depth, double a
     std::vector<uint16_t> legalMoves = orderMoves(board, allLegalMoves(board));
     double bestScore = -999999;
     uint16_t bestMove = 0;
-    // std::cout << "size before updating: " << table.size() << "\n";
     updateTranspositionTable(table, zobristHash); // Just increment the visit count
-    // std::cout << "size after updating: " << table.size() << "\n";
 
     // Base case: if the depth is 0 or game over, return the evaluation of the position
     GameResult result = gameOver(board, legalMoves, table);
@@ -376,8 +356,8 @@ double negamax(BoardState& board, TranspositionTable& table, int depth, double a
         // double eval = evaluate(board);
         double eval = QSearch(board, alpha, beta);
         updateTranspositionTable(table, zobristHash, 0, eval, depth);
-        // if (debugnm) std::cout << "Evaluating leaf node at depth 0: eval = " << eval << "\n";
-        // if (debugnm) std::cout << board << "\n";
+        if (debugnm) std::cout << "Evaluating leaf node at depth 0: eval = " << eval << "\n";
+        if (debugnm) std::cout << board << "\n";
         decrementVisitCount(table, zobristHash);
         return eval;
     }
@@ -465,7 +445,5 @@ uint16_t getBestMove(BoardState& board, TranspositionTable& table, int depth) {
     }
     if (debuggbm) std::cout << "Best move at depth " << depth << ": " << moveToString(bestMove)
               << " with score = " << bestScore << "\n";
-    // std::cout << "transposition table size " << table.size() << "\n";
-    // std::cout << "Transposition table uses " << tttable_uses << "\n";
     return bestMove;
 }

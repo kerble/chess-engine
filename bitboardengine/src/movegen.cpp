@@ -45,15 +45,7 @@ static uint64_t generateRayMask(int kingSquare, int attackerSquare, uint64_t occ
 
     // Restrict the ray to the squares between the king and the attacker (including the attacker)
     uint64_t rayMask = kingRayMask & attackerAttackMask;
-    // std::cout << "debug gen ray mask" << std::endl;
-    // std::cout << "Attacker only board: " << bitboardToBinaryString(attackerOnlyBoard) <<
-    // std::endl; std::cout << "isDiagonalAttack " << isDiagonalAttack << std::endl; std::cout <<
-    // "king ray mask" << bitboardToBinaryString(kingRayMask) << std::endl; std::cout << "attacker
-    // attack mask" << bitboardToBinaryString(attackerAttackMask) << std::endl; std::cout <<
-    // "rayMask = kingRayMask & attackerAttackMask" << bitboardToBinaryString(rayMask) << std::endl;
     rayMask |= (1ULL << attackerSquare);  // Include the attacker's square for capturing
-    // std::cout << "rayMask = kingRayMask & attackerAttackMask" << bitboardToBinaryString(rayMask)
-    // << std::endl;
     return rayMask;
 }
 
@@ -98,7 +90,6 @@ static int findAttackerSquare(const BoardState& board) {
     }
 
     // If no attackers are found, throw an error
-// std::cout << board << std::endl;
     throw std::logic_error(
         "No attacker found for the king. This function is only called when there is an attacker. "
         "Something is wrong");
@@ -382,14 +373,12 @@ static std::vector<uint64_t> detectPinnedPieces(int kingSquare, uint64_t enemyOc
     uint64_t rookAttackMask = Rmagic(kingSquare, enemyOccupancy);  // King's straight-line attacks
     uint64_t straightAttackers = rookAttackMask & (enemyRooks | enemyQueens);  // Only rooks/queens
 
-    // std::cout << "straight attackers:\n" << bitboardToBinaryString(straightAttackers) << std::endl;
 
     while (straightAttackers) {
         int attackerSquare = popLSB(straightAttackers);
 
         // Generate ray between the king and attacker
         uint64_t rayMask = generateRayMask(kingSquare, attackerSquare, enemyOccupancy);
-        // std::cout << "raymask:\n" << bitboardToBinaryString(rayMask) << std::endl;
         rayMask |= (1ULL << attackerSquare);  // Include attacker square
 
         // Find allied pieces on this ray
@@ -572,16 +561,8 @@ static uint64_t generatePawnBitboard(
 
     // Capture moves
     std::array<uint64_t, 64> pawnThreatsTable = isWhite ? wpawn_threats_table : bpawn_threats_table;
-    // uint64_t enPassantMask = 0;
-    // if(enPassantSquare != NO_EN_PASSANT){
-    //     enPassantMask = (1ULL << enPassantSquare);
-    // }
     uint64_t enPassantMask = enPassantSquare != NO_EN_PASSANT ? (1ULL << enPassantSquare) : 0;
-    // std::cout << "en passant square: " << enPassantSquare << "\n";
-    // std::cout << "epm\n" << bitboardToBinaryString(enPassantMask) << "\n";
     uint64_t captures = pawnThreatsTable[pawnSquare] & (enemyOccupancy | enPassantMask);
-    // std::cout << "eo or ep:\n" << bitboardToBinaryString((enemyOccupancy | enPassantMask)) << "\n";
-    // std::cout << "captures:\n" << bitboardToBinaryString(captures) << "\n";
     moves |= captures;
     return moves;
 }
@@ -643,7 +624,6 @@ static std::vector<uint16_t> generateMovesNoCheckNoPins(const BoardState& board)
         int pawnSquare = popLSB(pawnsBB);
         uint64_t enemyOccupancy = board.getOccupancy(!isWhite);
 
-        // std::cout << "enemyocc:\n" << bitboardToBinaryString(enemyOccupancy);
         uint64_t pawnMoves = generatePawnBitboard(
             pawnSquare, enemyOccupancy, board.getAllOccupancy(), board.getEnPassant(), isWhite);
 

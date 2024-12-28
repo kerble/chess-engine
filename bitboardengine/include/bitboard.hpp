@@ -128,8 +128,6 @@ int charToPieceIndex(char piece);
 // Function to parse castling rights from FEN string (e.g., "KQkq") to uint64_t
 int parseCastlingRights(const std::string& rights);
 
-uint64_t findBitboard(const BoardState& board, int square, bool isWhite);
-int getPromotedPieceType(int special, bool isWhite);
 BoardState parseFEN(const std::string& fen);
 
 
