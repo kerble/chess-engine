@@ -6,40 +6,6 @@ uint64_t zobristCastling[16];
 uint64_t zobristEnPassant[8];
 uint64_t zobristSideToMove;
 
-int charToPieceIndex(char piece) {
-    switch (piece) {
-        case 'P':
-            return WHITE_PAWNS;
-        case 'N':
-            return WHITE_KNIGHTS;
-        case 'B':
-            return WHITE_BISHOPS;
-        case 'R':
-            return WHITE_ROOKS;
-        case 'Q':
-            return WHITE_QUEENS;
-        case 'K':
-            return WHITE_KINGS;
-        case 'p':
-            return BLACK_PAWNS;
-        case 'n':
-            return BLACK_KNIGHTS;
-        case 'b':
-            return BLACK_BISHOPS;
-        case 'r':
-            return BLACK_ROOKS;
-        case 'q':
-            return BLACK_QUEENS;
-        case 'k':
-            return BLACK_KINGS;
-        default:
-            std::string piecestr = "";
-            piecestr += piece;
-            std::string error = "Invalid FEN character for piece. " + piecestr;
-            throw std::invalid_argument(error);
-    }
-}
-
 // Function to convert algebraic notation to square index (0-63)
 int algebraicToSquare(const std::string& algebraic) {
     if (algebraic.size() != 2) {
@@ -75,28 +41,178 @@ std::string squareToAlgebraic(int square) {
     return std::string(1, file) + rank;
 }
 
-// Function to parse castling rights from FEN string to int
-int parseCastlingRights(const std::string& rights) {
-    int result = 0;
-    for (char c : rights) {
-        switch (c) {
-            case 'K':
-                result |= (1ULL << 0);
-                break;  // White kingside
-            case 'Q':
-                result |= (1ULL << 1);
-                break;  // White queenside
-            case 'k':
-                result |= (1ULL << 2);
-                break;  // Black kingside
-            case 'q':
-                result |= (1ULL << 3);
-                break;  // Black queenside
-            default:
-                break;  // Ignore invalid characters
+// Convert a uint64_t bitboard into a human-readable binary string
+std::string bitboardToBinaryString(uint64_t bitboard) {
+    std::string result = "\n";
+    for (int rank = 7; rank >= 0; --rank) {     // Start from rank 8 down to rank 1
+        for (int file = 0; file < 8; ++file) {  // Left to right: a to h
+            int square = rank * 8 + file;
+            result += (bitboard & (1ULL << square)) ? '1' : '0';
         }
+        result += '\n';  // Newline after each rank
     }
     return result;
+}
+
+// Constructor for BoardState
+BoardState::BoardState()
+    : bitboards{},  // Initialize all bitboards to 0
+      white_occupancy(0),
+      black_occupancy(0),
+      all_occupancy(0),
+      en_passant_square(NO_EN_PASSANT),// No en passant square at start
+      castling_rights(0b1111),  // All castling rights enabled (KQkq)
+      is_white_turn(true),      // White moves first
+      halfmove_clock(0),        // No halfmoves at the start
+      fullmove_number(1)        // First move of the game
+{
+    // Initialize the starting positions of pieces using bitboards
+    bitboards[WHITE_PAWNS] = 0x000000000000FF00;
+    bitboards[WHITE_KNIGHTS] = 0x0000000000000042;
+    bitboards[WHITE_BISHOPS] = 0x0000000000000024;
+    bitboards[WHITE_ROOKS] = 0x0000000000000081;
+    bitboards[WHITE_QUEENS] = 0x0000000000000008;
+    bitboards[WHITE_KINGS] = 0x0000000000000010;
+
+    bitboards[BLACK_PAWNS] = 0x00FF000000000000;
+    bitboards[BLACK_KNIGHTS] = 0x4200000000000000;
+    bitboards[BLACK_BISHOPS] = 0x2400000000000000;
+    bitboards[BLACK_ROOKS] = 0x8100000000000000;
+    bitboards[BLACK_QUEENS] = 0x0800000000000000;
+    bitboards[BLACK_KINGS] = 0x1000000000000000;
+
+    // Calculate occupancies
+    updateOccupancy();
+}
+
+// Update the bitboard for a specific piece type
+void BoardState::updateBitboard(int pieceType, uint64_t newBitboard) {
+    if (pieceType < 0 || pieceType >= 12) {
+        throw std::invalid_argument("Invalid pieceType in updateBitboard");
+        return;
+    }
+
+    uint64_t oldBitboard = bitboards[pieceType];  // Store the old bitboard
+    bitboards[pieceType] = newBitboard;           // Update the piece's bitboard
+
+    // Update the occupancy bitboards based on the difference in bitboards
+    if (pieceType < 6) {                                     // White piece
+        white_occupancy ^= oldBitboard;  // Remove old
+        white_occupancy |= newBitboard;  // Add new
+    } else {                                                 // Black piece
+        black_occupancy ^= oldBitboard;  // Remove old
+        black_occupancy |= newBitboard;  // Add new
+    }
+    updateOccupancy();
+}
+
+// Get the bitboard for a specific piece type
+uint64_t BoardState::getBitboard(int pieceType) const {
+    if (pieceType < 0 || pieceType >= 12) {
+        throw std::invalid_argument("Invalid pieceType in getBitboard.");
+        return 0;
+    }
+    return bitboards[pieceType];
+}
+
+// Set the occupancy bitboards for white and black
+void BoardState::setOccupancy(uint64_t white, uint64_t black) {
+    white_occupancy = white;
+    black_occupancy = black;
+    all_occupancy = white | black;  // All occupied squares (white + black pieces)
+}
+
+uint64_t BoardState::getOccupancy(bool isWhite) const {
+    return isWhite ? white_occupancy : black_occupancy;
+}
+
+uint64_t BoardState::getAllOccupancy() const { return all_occupancy; }
+
+// Update the all_occupancy bitboard (white + black pieces combined)
+void BoardState::updateOccupancy() {
+    // Reset the occupancy bitboards
+    white_occupancy = 0;
+    black_occupancy = 0;
+
+    // Add up all white pieces' bitboards
+    for (int i = WHITE_PAWNS; i <= WHITE_KINGS; ++i) {
+        white_occupancy |= bitboards[i];
+    }
+
+    // Add up all black pieces' bitboards
+    for (int i = BLACK_PAWNS; i <= BLACK_KINGS; ++i) {
+        black_occupancy |= bitboards[i];
+    }
+
+    // Combine white and black occupancies
+    all_occupancy = white_occupancy | black_occupancy;
+}
+
+// Set castling rights using a bitmask
+void BoardState::setCastlingRights(uint8_t rights) { castling_rights = rights; }
+
+void BoardState::revokeKingsideCastlingRights(bool isWhite) {
+    castling_rights &= ~(isWhite ? 0b01 : 0b0100);
+}
+
+void BoardState::revokeQueensideCastlingRights(bool isWhite) {
+    castling_rights &= ~(isWhite ? 0b10 : 0b1000);
+}
+
+void BoardState::revokeAllCastlingRights(bool isWhite) {
+    castling_rights &= ~(isWhite ? 0b11 : 0b1100);
+}
+uint8_t BoardState::getCastlingRights() const { return castling_rights; }
+
+bool BoardState::canCastleKingside(bool isWhite) const {
+    if (isWhite) {
+        return castling_rights & (1ULL << 0);  // Check bit 0 (White kingside)
+    } else {
+        return castling_rights & (1ULL << 2);  // Check bit 2 (Black kingside)
+    }
+}
+
+bool BoardState::canCastleQueenside(bool isWhite) const {
+    if (isWhite) {
+        return castling_rights & (1ULL << 1);  // Check bit 1 (White queenside)
+    } else {
+        return castling_rights & (1ULL << 3);  // Check bit 3 (Black queenside)
+    }
+}
+
+void BoardState::setEnPassant(uint8_t square){ en_passant_square = square; }
+// Get the en passant square (returns the square where en passant is possible, 0-63)
+// NO_EN_PASSANT if not possible
+uint8_t BoardState::getEnPassant() const { return en_passant_square; }
+
+void BoardState::flipTurn(){ is_white_turn = !is_white_turn;}
+void BoardState::setTurn(bool isWhiteTurn) { is_white_turn = isWhiteTurn; }
+bool BoardState::getTurn() const { return is_white_turn; }
+void BoardState::setMoveCounters(int halfmove, int fullmove) {
+    halfmove_clock = halfmove;
+    fullmove_number = fullmove;
+}
+
+// Get halfmove clock (the number of halfmoves since the last pawn move or capture)
+int BoardState::getHalfmoveClock() const { return halfmove_clock; }
+
+// Get fullmove number (the number of moves in the game, counting both players' moves)
+int BoardState::getFullmoveNumber() const { return fullmove_number; }
+
+uint64_t BoardState::getZobristHash() const { return zobrist_hash; }
+void BoardState::setZobristHash(uint64_t zobrist){ zobrist_hash = zobrist; }
+
+bool operator==(const BoardState& lhs, const BoardState& rhs) {
+    return lhs.bitboards == rhs.bitboards &&
+           lhs.white_occupancy == rhs.white_occupancy &&
+           lhs.black_occupancy == rhs.black_occupancy &&
+           lhs.all_occupancy == rhs.all_occupancy &&
+           lhs.en_passant_square == rhs.en_passant_square &&
+           lhs.castling_rights == rhs.castling_rights &&
+           lhs.is_white_turn == rhs.is_white_turn &&
+           lhs.halfmove_clock == rhs.halfmove_clock &&
+           lhs.fullmove_number == rhs.fullmove_number &&
+           lhs.zobrist_hash == rhs.zobrist_hash;
 }
 
 std::ostream& operator<<(std::ostream& os, const BoardState& board) {
@@ -170,27 +286,60 @@ std::ostream& operator<<(std::ostream& os, const BoardState& board) {
     return os;
 }
 
-bool operator==(const BoardState& lhs, const BoardState& rhs) {
-    return lhs.bitboards == rhs.bitboards &&
-           lhs.white_occupancy == rhs.white_occupancy &&
-           lhs.black_occupancy == rhs.black_occupancy &&
-           lhs.all_occupancy == rhs.all_occupancy &&
-           lhs.en_passant_square == rhs.en_passant_square &&
-           lhs.castling_rights == rhs.castling_rights &&
-           lhs.is_white_turn == rhs.is_white_turn &&
-           lhs.halfmove_clock == rhs.halfmove_clock &&
-           lhs.fullmove_number == rhs.fullmove_number &&
-           lhs.zobrist_hash == rhs.zobrist_hash;
+int charToPieceIndex(char piece) {
+    switch (piece) {
+        case 'P':
+            return WHITE_PAWNS;
+        case 'N':
+            return WHITE_KNIGHTS;
+        case 'B':
+            return WHITE_BISHOPS;
+        case 'R':
+            return WHITE_ROOKS;
+        case 'Q':
+            return WHITE_QUEENS;
+        case 'K':
+            return WHITE_KINGS;
+        case 'p':
+            return BLACK_PAWNS;
+        case 'n':
+            return BLACK_KNIGHTS;
+        case 'b':
+            return BLACK_BISHOPS;
+        case 'r':
+            return BLACK_ROOKS;
+        case 'q':
+            return BLACK_QUEENS;
+        case 'k':
+            return BLACK_KINGS;
+        default:
+            std::string piecestr = "";
+            piecestr += piece;
+            std::string error = "Invalid FEN character for piece. " + piecestr;
+            throw std::invalid_argument(error);
+    }
 }
-// Convert a uint64_t bitboard into a human-readable binary string
-std::string bitboardToBinaryString(uint64_t bitboard) {
-    std::string result = "\n";
-    for (int rank = 7; rank >= 0; --rank) {     // Start from rank 8 down to rank 1
-        for (int file = 0; file < 8; ++file) {  // Left to right: a to h
-            int square = rank * 8 + file;
-            result += (bitboard & (1ULL << square)) ? '1' : '0';
+
+// Function to parse castling rights from FEN string to int
+int parseCastlingRights(const std::string& rights) {
+    int result = 0;
+    for (char c : rights) {
+        switch (c) {
+            case 'K':
+                result |= (1ULL << 0);
+                break;  // White kingside
+            case 'Q':
+                result |= (1ULL << 1);
+                break;  // White queenside
+            case 'k':
+                result |= (1ULL << 2);
+                break;  // Black kingside
+            case 'q':
+                result |= (1ULL << 3);
+                break;  // Black queenside
+            default:
+                break;  // Ignore invalid characters
         }
-        result += '\n';  // Newline after each rank
     }
     return result;
 }
@@ -259,160 +408,9 @@ BoardState parseFEN(const std::string& fen) {
     // Calculate and set Zobrist hash
     uint64_t zobristHash = computeZobristHash(board);
     board.setZobristHash(zobristHash);
-    
+
     return board;
 }
-
-// Constructor for BoardState
-BoardState::BoardState()
-    : bitboards{},  // Initialize all bitboards to 0
-      white_occupancy(0),
-      black_occupancy(0),
-      all_occupancy(0),
-      en_passant_square(NO_EN_PASSANT),// No en passant square at start
-      castling_rights(0b1111),  // All castling rights enabled (KQkq)
-      is_white_turn(true),      // White moves first
-      halfmove_clock(0),        // No halfmoves at the start
-      fullmove_number(1)        // First move of the game
-{
-    // Initialize the starting positions of pieces using bitboards
-    bitboards[WHITE_PAWNS] = 0x000000000000FF00;
-    bitboards[WHITE_KNIGHTS] = 0x0000000000000042;
-    bitboards[WHITE_BISHOPS] = 0x0000000000000024;
-    bitboards[WHITE_ROOKS] = 0x0000000000000081;
-    bitboards[WHITE_QUEENS] = 0x0000000000000008;
-    bitboards[WHITE_KINGS] = 0x0000000000000010;
-
-    bitboards[BLACK_PAWNS] = 0x00FF000000000000;
-    bitboards[BLACK_KNIGHTS] = 0x4200000000000000;
-    bitboards[BLACK_BISHOPS] = 0x2400000000000000;
-    bitboards[BLACK_ROOKS] = 0x8100000000000000;
-    bitboards[BLACK_QUEENS] = 0x0800000000000000;
-    bitboards[BLACK_KINGS] = 0x1000000000000000;
-
-    // Calculate occupancies
-    updateOccupancy();
-}
-
-// Update the bitboard for a specific piece type
-void BoardState::updateBitboard(int pieceType, uint64_t newBitboard) {
-    if (pieceType < 0 || pieceType >= 12) {
-        throw std::invalid_argument("Invalid pieceType in updateBitboard");
-        return;
-    }
-
-    uint64_t oldBitboard = bitboards[pieceType];  // Store the old bitboard
-    bitboards[pieceType] = newBitboard;           // Update the piece's bitboard
-
-    // Update the occupancy bitboards based on the difference in bitboards
-    if (pieceType < 6) {                                     // White piece
-        white_occupancy ^= oldBitboard;  // Remove old
-        white_occupancy |= newBitboard;  // Add new
-    } else {                                                 // Black piece
-        black_occupancy ^= oldBitboard;  // Remove old
-        black_occupancy |= newBitboard;  // Add new
-    }
-    updateOccupancy();
-}
-
-// Get the bitboard for a specific piece type
-uint64_t BoardState::getBitboard(int pieceType) const {
-    if (pieceType < 0 || pieceType >= 12) {
-        throw std::invalid_argument("Invalid pieceType in getBitboard.");
-        return 0;
-    }
-    return bitboards[pieceType];
-}
-// Set castling rights using a bitmask
-void BoardState::setCastlingRights(uint8_t rights) { castling_rights = rights; }
-
-void BoardState::setEnPassant(uint8_t square){ en_passant_square = square; }
-
-// Check kingside Castling
-bool BoardState::canCastleKingside(bool isWhite) const {
-    if (isWhite) {
-        return castling_rights & (1ULL << 0);  // Check bit 0 (White kingside)
-    } else {
-        return castling_rights & (1ULL << 2);  // Check bit 2 (Black kingside)
-    }
-}
-
-// Check if the queenside castling
-bool BoardState::canCastleQueenside(bool isWhite) const {
-    if (isWhite) {
-        return castling_rights & (1ULL << 1);  // Check bit 1 (White queenside)
-    } else {
-        return castling_rights & (1ULL << 3);  // Check bit 3 (Black queenside)
-    }
-}
-
-void BoardState::revokeKingsideCastlingRights(bool isWhite) {
-    castling_rights &= ~(isWhite ? 0b01 : 0b0100);
-}
-
-void BoardState::revokeQueensideCastlingRights(bool isWhite) {
-    castling_rights &= ~(isWhite ? 0b10 : 0b1000);
-}
-
-void BoardState::revokeAllCastlingRights(bool isWhite) {
-    castling_rights &= ~(isWhite ? 0b11 : 0b1100);
-}
-// Get the en passant square (returns the square where en passant is possible, 0-63)
-// NO_EN_PASSANT if not possible
-uint8_t BoardState::getEnPassant() const { return en_passant_square; }
-uint8_t BoardState::getCastlingRights() const { return castling_rights; }
-// Set the turn (true = white's turn, false = black's turn)
-void BoardState::setTurn(bool isWhiteTurn) { is_white_turn = isWhiteTurn; }
-void BoardState::flipTurn(){ is_white_turn = !is_white_turn;}
-// Get the current turn (true = white's turn, false = black's turn)
-bool BoardState::getTurn() const { return is_white_turn; }
-
-uint64_t BoardState::getOccupancy(bool isWhite) const {
-    return isWhite ? white_occupancy : black_occupancy;
-}
-// Set the occupancy bitboards for white and black
-void BoardState::setOccupancy(uint64_t white, uint64_t black) {
-    white_occupancy = white;
-    black_occupancy = black;
-    all_occupancy = white | black;  // All occupied squares (white + black pieces)
-}
-
-uint64_t BoardState::getAllOccupancy() const { return all_occupancy; }
-
-// Update the all_occupancy bitboard (white + black pieces combined)
-void BoardState::updateOccupancy() {
-    // Reset the occupancy bitboards
-    white_occupancy = 0;
-    black_occupancy = 0;
-
-    // Add up all white pieces' bitboards
-    for (int i = WHITE_PAWNS; i <= WHITE_KINGS; ++i) {
-        white_occupancy |= bitboards[i];
-    }
-
-    // Add up all black pieces' bitboards
-    for (int i = BLACK_PAWNS; i <= BLACK_KINGS; ++i) {
-        black_occupancy |= bitboards[i];
-    }
-
-    // Combine white and black occupancies
-    all_occupancy = white_occupancy | black_occupancy;
-}
-
-// Set move counters (halfmove clock and fullmove number)
-void BoardState::setMoveCounters(int halfmove, int fullmove) {
-    halfmove_clock = halfmove;
-    fullmove_number = fullmove;
-}
-
-void BoardState::setZobristHash(uint64_t zobrist){ zobrist_hash = zobrist; }
-uint64_t BoardState::getZobristHash() const { return zobrist_hash; }
-
-// Get halfmove clock (the number of halfmoves since the last pawn move or capture)
-int BoardState::getHalfmoveClock() const { return halfmove_clock; }
-
-// Get fullmove number (the number of moves in the game, counting both players' moves)
-int BoardState::getFullmoveNumber() const { return fullmove_number; }
 
 void initializeZobrist() {
     std::mt19937_64 rng(1234567);  // Seed for reproducibility
@@ -446,7 +444,7 @@ uint64_t computeZobristHash(const BoardState& board) {
     for (int piece = 0; piece < 12; ++piece) {
         uint64_t bitboard = board.getBitboard(piece);
         while (bitboard) {
-            int square = __builtin_ctzll(bitboard);  // Find least significant bit
+            int square = __builtin_ctzll(bitboard);  // f least significant bit
             hash ^= zobristTable[piece][square];
             bitboard &= bitboard - 1;  // Clear the least significant bit
         }
