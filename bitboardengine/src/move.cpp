@@ -219,10 +219,10 @@ MoveUndo applyMove(BoardState& board, uint16_t move) {
         uint64_t adjacentMask = 0;
 
         // Not on the left edge
-        if (epSquare % 8 != 0) adjacentMask |= (1ULL << (epSquare - 1));
+        if (epSquare % 8 != 0) adjacentMask |= (1ULL << (toSquare - 1));
 
         // Not on the right edge
-        if (epSquare % 8 != 7) adjacentMask |= (1ULL << (epSquare + 1));
+        if (epSquare % 8 != 7) adjacentMask |= (1ULL << (toSquare + 1));
         // If there's at least one enemy pawn adjacent, set the en passant square
         if (adjacentMask & enemyPawnBitboard) {
             board.setEnPassant(epSquare);
@@ -352,7 +352,7 @@ void decodeMove(uint16_t move, int& fromSquare, int& toSquare, int& special) {
     special = (move >> 12) & 0xF;   // Extract bits [12-15]
 }
 
-// Function to encode a UCI move into your uint16_t move format
+// Function to encode a UCI move into uint16_t move format
 uint16_t encodeUCIMove(BoardState& board, const std::string& uciMove) {
     if (uciMove.length() < 4 || uciMove.length() > 5) {
         throw std::invalid_argument("Invalid UCI move format: " + uciMove);

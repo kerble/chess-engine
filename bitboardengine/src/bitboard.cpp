@@ -359,11 +359,7 @@ BoardState parseFEN(const std::string& fen) {
         board.updateBitboard(i, 0);
     }
 
-    // Initialize occupancy bitboards
-    uint64_t whiteOccupancy = 0;
-    uint64_t blackOccupancy = 0;
-
-    int square = 56;  // Start from bottom-left (a1), which is bit 0
+    int square = 56;  // Start from top-left (a8), which is bit 56
     for (char ch : piecePlacement) {
         if (std::isdigit(ch)) {
             square += (ch - '0');  // Skip empty squares
@@ -375,15 +371,8 @@ BoardState parseFEN(const std::string& fen) {
 
             // Add the piece to the piece bitboard
             uint64_t newBitboard = (1ULL << square);
+            newBitboard |= currentBitboard;
             board.updateBitboard(pieceType, newBitboard);
-
-            // Update the appropriate occupancy bitboard
-            if (isupper(ch)) {
-                whiteOccupancy |= (1ULL << square);  // Uppercase letters are white
-            } else {
-                blackOccupancy |= (1ULL << square);  // Lowercase letters are black
-            }
-
             square++;
         }
     }
@@ -402,13 +391,9 @@ BoardState parseFEN(const std::string& fen) {
     // Parse move counters
     board.setMoveCounters(halfmoveClock, fullmoveNumber);
 
-    // Set occupancy bitboards
-    board.setOccupancy(whiteOccupancy, blackOccupancy);
-
     // Calculate and set Zobrist hash
     uint64_t zobristHash = computeZobristHash(board);
     board.setZobristHash(zobristHash);
-
     return board;
 }
 
@@ -471,7 +456,7 @@ uint64_t computeZobristHash(const BoardState& board) {
 void updateTranspositionTable(TranspositionTable& table, uint64_t hash, uint16_t bestMove,
                               double evaluation, int depth) {
     auto& entry = table[hash];  // Access or create the entry
-    entry.visitCount++;
+    // entry.visitCount++;
     if (depth > entry.depth) {  // Only update if depth is greater
         entry.bestMove = bestMove;
         entry.evaluation = evaluation;
@@ -488,7 +473,12 @@ bool getTranspositionTableEntry(const TranspositionTable& table, uint64_t hash,
     }
     return false;
 }
-
+void incrementVisitCount(TranspositionTable& table, uint64_t hash) {
+    auto it = table.find(hash);
+    if (it != table.end()) {
+        it->second.visitCount++;
+    }
+}
 void decrementVisitCount(TranspositionTable& table, uint64_t hash) {
     auto it = table.find(hash);
     if (it != table.end() && it->second.visitCount > 0) {

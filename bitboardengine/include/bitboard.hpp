@@ -142,7 +142,8 @@ void updateTranspositionTable(TranspositionTable& table, uint64_t hash, uint16_t
 
 bool getTranspositionTableEntry(const TranspositionTable& table, uint64_t hash,
                                 TranspositionTableEntry& entry);
-                          
+                                
+void incrementVisitCount(TranspositionTable& table, uint64_t hash);
 void decrementVisitCount(TranspositionTable& table, uint64_t hash);
 
 #endif // BITBOARD_HPP
