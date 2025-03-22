@@ -64,9 +64,11 @@ bool stalemate(const BoardState& board, const std::vector<uint16_t>& legalMoves)
 
 bool threefold(const TranspositionTable& table, uint64_t current_pos_hash) {
     // return false;
+    // std::cout << "checking if the game is a draw" << std::endl;
     auto it = table.find(current_pos_hash);
     if (it != table.end()) {
         // If the hash exists in the table, check its visitCount
+        // std::cout << "hash found, its visit count is " << it->second.visitCount << std::endl;
         return it->second.visitCount >= 3;
     }
     return false;  // If the hash is not found, it's not a repetition
@@ -78,18 +80,18 @@ GameResult gameOver(const BoardState& board, const std::vector<uint16_t>& legalM
     if (stalemate(board, legalMoves)) return DRAW_STALEMATE;
     if (fiftyMoveRule(board)) return DRAW_50_MOVE_RULE;
     if (insufficientMaterial(board)) return DRAW_INSUFFICIENT_MATERIAL;
-    // if (threefold(table, board.getZobristHash())) return DRAW_THREEFOLD_REPETITION;
+    if (threefold(table, board.getZobristHash())) return DRAW_THREEFOLD_REPETITION;
     return ONGOING;
 }
 
 // forward declaration so this function works
-double see(const BoardState& board, int toSq, int target, int frSq, int aPiece);
+int see(const BoardState& board, int toSq, int target, int frSq, int aPiece);
 
 std::vector<uint16_t> orderMoves(BoardState& board, const std::vector<uint16_t>& moves) {
-    std::vector<std::pair<double, uint16_t>> scoredMoves;
+    std::vector<std::pair<int, uint16_t>> scoredMoves;
 
     for (const auto& move : moves) {
-        double score = 0;
+        int score = 0;
         int fromSquare, toSquare, special;
         decodeMove(move, fromSquare, toSquare, special);
 
@@ -166,7 +168,7 @@ uint64_t attacksTo(const BoardState& board, const uint64_t occupancy, int toSqua
 
 uint64_t getLeastValuablePiece(const BoardState& board, uint64_t attadef, bool isWhite) {
     uint64_t leastValuablePiece = 0;
-    double minValue = 201;  // Start with a high initial value
+    int minValue = 201;  // Start with a high initial value
     attadef = attadef & board.getOccupancy(isWhite);
     while (attadef) {
         // Isolate the least significant bit (one piece in attadef)
@@ -175,7 +177,7 @@ uint64_t getLeastValuablePiece(const BoardState& board, uint64_t attadef, bool i
         int pieceType = findPieceType(board, squareMask, isWhite);
 
         // Get the absolute material score for the piece
-        double pieceValue = std::abs(MATERIAL_SCORES[pieceType]);
+        int pieceValue = std::abs(MATERIAL_SCORES[pieceType]);
 
         // Update the least valuable piece if this one has a smaller value
         if (pieceValue < minValue) {
@@ -212,8 +214,8 @@ uint64_t considerXrays(const BoardState& board, uint64_t occ, int toSquare) {
   Statically determine if a capture results in a material gain or loss.
   Used for move ordering for more efficient pruning and also for QSearch
 */
-double see(const BoardState& board, int toSq, int target, int frSq, int aPiece) {
-    double gain[32];
+int see(const BoardState& board, int toSq, int target, int frSq, int aPiece) {
+    int gain[32];
     int d = 0;
     uint64_t kings   = board.getBitboard(WHITE_KINGS)   | board.getBitboard(BLACK_KINGS);
     uint64_t knights = board.getBitboard(WHITE_KNIGHTS) | board.getBitboard(BLACK_KNIGHTS);
@@ -288,12 +290,15 @@ Search::Search(BoardState& boardParam, TranspositionTable& tableParam, int timeL
     timeLimitMs = timeLimitParam;
     maxDepth = 12;
     bestMoveSoFar = 0;
-    bestEvalSoFar = -999;
+    bestEvalSoFar = -99999;
     searchInterrupted = false;
 }
 
 bool Search::shouldStopSearch() {
     auto now = std::chrono::steady_clock::now();
+    // std::cout << "now: " << now << std::endl;
+    // std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime)
+                    //  .count() << " >= " << timeLimitMs << std::endl;
     if(std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count() >=
         timeLimitMs){
             searchInterrupted = true;
@@ -302,12 +307,12 @@ bool Search::shouldStopSearch() {
     return false;
 }
 
-double Search::QSearch(double alpha, double beta) {
+int Search::QSearch(int alpha, int beta) {
     // updateTranspositionTable(table, zobristHash, bestMoveNM, bestScore, depth);
     if (shouldStopSearch()) {
         return 0;
     }
-    double standPat = evaluate(board);
+    int standPat = evaluate(board);
     if (standPat >= beta) return beta;
     if (standPat > alpha) alpha = standPat;
     
@@ -315,7 +320,7 @@ double Search::QSearch(double alpha, double beta) {
     std::vector<uint16_t> checksAndCaptures = goodCaptureOrChecks(board, allMoves);
     for (uint16_t move : checksAndCaptures) {
         MoveUndo undoState = applyMove(board, move);
-        double score = -QSearch(-beta, -alpha);
+        int score = -QSearch(-beta, -alpha);
         undoMove(board, undoState);
 
         if (score >= beta) return beta;
@@ -326,12 +331,12 @@ double Search::QSearch(double alpha, double beta) {
 }
 
 
-int tttable_uses = 0;
+int ttable_uses = 0;
 bool debugnm = false;
-bool debuggbm = true;
+bool debuggbm = false;
 //check if we're out of time, increment ttable, check legal moves, check if game is over,
 //then check ttable, then order moves, then search moves
-double Search::negamax(int depth, double alpha, double beta) {
+int Search::negamax(int depth, int alpha, int beta) {
     if (shouldStopSearch()) {
         return 0;
     }
@@ -339,9 +344,9 @@ double Search::negamax(int depth, double alpha, double beta) {
     // Just increment the visit count
     incrementVisitCount(table, zobristHash);
     if(threefold(table, zobristHash)) {
-        updateTranspositionTable(table, zobristHash, 0, 0, depth);
+        updateTranspositionTable(table, zobristHash, 0, 100, depth, EXACT_SCORE);
         decrementVisitCount(table, zobristHash);
-        return 0;
+        return 100;
     }
     
     auto it = table.find(zobristHash);
@@ -349,7 +354,7 @@ double Search::negamax(int depth, double alpha, double beta) {
         // If depth is sufficient, use stored evaluation
         const TranspositionTableEntry& entry = it->second;
         if (entry.depth >= depth) {
-            tttable_uses++;
+            ttable_uses++;
             if (debugnm) {
                 std::cout << "using ttable on already-found-position\n" << board << "\n";
                 std::cout << "already searched on depth " << entry.depth
@@ -357,14 +362,22 @@ double Search::negamax(int depth, double alpha, double beta) {
                 std::cout << "returning " << entry.evaluation << "\n";
             }
             decrementVisitCount(table, zobristHash);
-            if (entry.evaluation <= alpha) return alpha;  // Fail-low
-            if (entry.evaluation >= beta) return beta;    // Fail-high
-            return entry.evaluation;                      // Exact score
+            // if (entry.evaluation <= alpha) return alpha;  // Fail-low
+            // if (entry.evaluation >= beta) return beta;    // Fail-high
+            // return entry.evaluation;                      // Exact score
+            if (entry.eval_type == EXACT_SCORE) return entry.evaluation;
+
+            if (entry.eval_type == UPPERBOUND_SCORE && entry.evaluation <= alpha)
+                return entry.evaluation;
+
+            if (entry.eval_type == LOWERBOUND_SCORE && entry.evaluation >= beta)
+                return entry.evaluation;
         }
     }
     std::vector<uint16_t> legalMoves = allLegalMoves(board);
     // Base case: if the depth is 0 or game over, return the evaluation of the position
     GameResult result = gameOver(board, legalMoves, table);
+    // std::cout << "just checked if the game is over, gameresult returned " << result << std::endl;
     int moveIndex = 0;
     if (result != ONGOING) {
         if (result == WHITE_WINS || result == BLACK_WINS) {
@@ -372,8 +385,8 @@ double Search::negamax(int depth, double alpha, double beta) {
             if (debugnm)
                 std::cout << ((result == WHITE_WINS) ? "White wins" : "Black wins") << "\n";
             if (debugnm) std::cout << board << "\n";
-            double mateScore = -250 - depth;
-            updateTranspositionTable(table, zobristHash, 0, mateScore, depth);
+            int mateScore = -2500 - depth;
+            updateTranspositionTable(table, zobristHash, 0, mateScore, depth, EXACT_SCORE);
             decrementVisitCount(table, zobristHash);
             return mateScore;
         }
@@ -400,14 +413,14 @@ double Search::negamax(int depth, double alpha, double beta) {
                 break;
             }
         }
-        updateTranspositionTable(table, zobristHash, 0, 0, depth);
+        updateTranspositionTable(table, zobristHash, 0, 100, depth, EXACT_SCORE);
         decrementVisitCount(table, zobristHash);
-        return 0;
+        return 100;
     }
     if (depth == 0) {
-        // double eval = evaluate(board);
-        double eval = QSearch(alpha, beta);
-        updateTranspositionTable(table, zobristHash, 0, eval, depth);
+        // int eval = evaluate(board);
+        int eval = QSearch(alpha, beta);
+        updateTranspositionTable(table, zobristHash, 0, eval, depth, EXACT_SCORE);
         if (debugnm) std::cout << "Evaluating leaf node at depth 0: eval = " << eval << "\n";
         if (debugnm) std::cout << board << "\n";
         decrementVisitCount(table, zobristHash);
@@ -417,15 +430,15 @@ double Search::negamax(int depth, double alpha, double beta) {
     // Now that we know we will iterate through the legal moves its worthwhile to go through the
     // effort of ordering them
     legalMoves = orderMoves(board, legalMoves);
-    double bestScore = -999999;
+    int bestScore = -999999;
     uint16_t bestMoveNM = 0;
-
+    int alpha_original = alpha;
     for (const uint16_t& move : legalMoves) {
         MoveUndo undoData = applyMove(board, move);
         if (debugnm)
-            std::cout << "Depth " << depth << ", Move " << moveIndex << ": " << moveToString(move)
-                      << "\n";
-        double score = -negamax(depth - 1, -beta, -alpha);
+        std::cout << "Depth " << depth << ", Move " << moveIndex << ": " << moveToString(move)
+        << "\n";
+        int score = -negamax(depth - 1, -beta, -alpha);
         undoMove(board, undoData);
         
         if (score > bestScore) {
@@ -439,9 +452,17 @@ double Search::negamax(int depth, double alpha, double beta) {
             break;  // Beta-cutoff
         }
     }
+    int flag = 0;
+    if (bestScore <= alpha_original) {
+        flag = UPPERBOUND_SCORE;  // No move improved alpha
+    } else if (bestScore >= beta) {
+        flag = LOWERBOUND_SCORE;  // Beta cutoff happened
+    } else {
+        flag = EXACT_SCORE;  // Best move was found without beta cutoff
+    }
 
-    // Update transposition table with the best score
-    updateTranspositionTable(table, zobristHash, bestMoveNM, bestScore, depth);
+    // Update transposition table with the correct score type
+    updateTranspositionTable(table, zobristHash, bestMoveNM, bestScore, depth, flag);
 
     // Decrement visit count after recursion completes
     decrementVisitCount(table, zobristHash);
@@ -454,25 +475,25 @@ void Search::getBestMove(int depth) {
     // std::vector<uint16_t> legalMoves = orderMoves(board, allLegalMoves(board));
 
     // uint16_t bestMove = 0;
-    // double bestScore = -INT_MAX;
+    // int bestScore = -INT_MAX;
     // bestEval
-    double alpha = -999999;
-    double beta = 999999;
+    int alpha = -999999;
+    int beta = 999999;
 
     if (debuggbm) std::cout << "Evaluating moves at depth " << depth << "\n";
     int moveIndex = 0; //remember to delete, only useflu for logs
     // std::cout << "length of legal moves: " << legalMoves.size() << "\n";
-    std::cout << "time limit: " << timeLimitMs << "\n";
+    // std::cout << "time limit: " << timeLimitMs << "\n";
     for (const uint16_t& move : orderedLegalMoves) {
         // BoardState test = board;
         if (shouldStopSearch()) {
             return;
         }
-        MoveUndo undoData = applyMove(board, move);
         
+        MoveUndo undoData = applyMove(board, move);
         if (debuggbm) std::cout << "Testing move " << moveIndex << ": " << moveToString(move) << "\n";
         // Determine if we're maximizing for white (positive) or black (negative)
-        double eval = -negamax(depth - 1, -beta, -alpha);
+        int eval = -negamax(depth - 1, -beta, -alpha);
         undoMove(board, undoData);
         scoredMoves.emplace_back(eval, move);
         if (debuggbm) std::cout << "Move " << moveToString(move) << " -> gbm eval = " << eval
@@ -496,14 +517,16 @@ void Search::getBestMove(int depth) {
     if (debuggbm) std::cout << "Best move at depth " << depth << ": " << moveToString(bestMoveSoFar)
               << " with score = " << bestEvalSoFar << "\n";
     // bestEval = bestScore;
+    // std::cout << "bestEvalSoFar: " << bestEvalSoFar << std::endl;
     return;
 }
 
-bool compareMoves(uint16_t a, uint16_t b, const std::unordered_map<uint16_t, double>& moveEvaluations) {
-    double evalA = moveEvaluations.count(a) ? moveEvaluations.at(a) : 0.0;
-    double evalB = moveEvaluations.count(b) ? moveEvaluations.at(b) : 0.0;
+bool compareMoves(uint16_t a, uint16_t b, const std::unordered_map<uint16_t, int>& moveEvaluations) {
+    int evalA = moveEvaluations.count(a) ? moveEvaluations.at(a) : 0.0;
+    int evalB = moveEvaluations.count(b) ? moveEvaluations.at(b) : 0.0;
     return evalA > evalB; // Higher evaluations come first
 }
+
 uint16_t Search::iterativeDeepening() {
     startTime = std::chrono::steady_clock::now();
     orderedLegalMoves = orderMoves(board, allLegalMoves(board));
@@ -527,5 +550,13 @@ uint16_t Search::iterativeDeepening() {
         scoredMoves.clear();
     }
 
+    return bestMoveSoFar;
+}
+
+uint16_t Search::searchToDepth(int depth) {
+    startTime = std::chrono::steady_clock::now();
+    orderedLegalMoves = orderMoves(board, allLegalMoves(board));
+    std::cout << moveToString(orderedLegalMoves[0]) << std::endl;
+    getBestMove(depth);
     return bestMoveSoFar;
 }

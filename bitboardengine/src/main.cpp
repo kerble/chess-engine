@@ -33,7 +33,7 @@ void printTranspositionTable(const TranspositionTable& table) {
     }
 }
 
-void handlePosition(const std::string& args, BoardState& board) {
+void handlePosition(const std::string& args, BoardState& board, TranspositionTable& table) {
     std::istringstream iss(args);
     std::string token;
 
@@ -49,6 +49,8 @@ void handlePosition(const std::string& args, BoardState& board) {
             std::string move;
             while (iss >> move) {
                 applyMove(board, encodeUCIMove(board, move));
+                updateTranspositionTable(table, board.getZobristHash());
+                incrementVisitCount(table, board.getZobristHash());
             }
         }
     } else if (token == "fen") {
@@ -65,10 +67,20 @@ void handlePosition(const std::string& args, BoardState& board) {
             std::string move;
             while (iss >> move) {
                 applyMove(board, encodeUCIMove(board, move));
+                updateTranspositionTable(table, board.getZobristHash());
+                incrementVisitCount(table, board.getZobristHash());
             }
         }
     } else {
         std::cerr << "Error: Invalid argument for position command: " << token << std::endl;
+    }
+
+    if(allLegalMoves(board).size() == 0){
+        cout << "no moves" << endl;
+    }
+    cout << "all moves for this position " << endl;
+    for (const uint16_t& move : allLegalMoves(board)) {
+        cout << moveToString(move) << endl;
     }
 }
 
@@ -132,7 +144,7 @@ int main(int argc, char* argv[]) {
     BoardState board;  // Initialize board state
     TranspositionTable table;
 
-    /* Import UCI moves
+    /* Import UCI moves from command line rather than from cin
     // Example UCI moves
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <moves>\n";
@@ -159,6 +171,7 @@ int main(int argc, char* argv[]) {
             std::cerr << "Error: " << e.what() << std::endl;
         }
     }
+    // cout << board << endl;
     */
 
     /* FEN
@@ -192,6 +205,8 @@ int main(int argc, char* argv[]) {
     // cout << materialGain << endl;
     */
     // /*
+
+
     std::string input;
     while (std::getline(std::cin, input)) {
         std::istringstream iss(input);
@@ -210,7 +225,7 @@ int main(int argc, char* argv[]) {
         } else if (command == "position") {
             std::string args;
             std::getline(iss, args);
-            handlePosition(args, board);
+            handlePosition(args, board, table);
         } else if (command == "go") {
             std::string args;
             std::getline(iss, args);
@@ -227,10 +242,22 @@ int main(int argc, char* argv[]) {
     }
 
     return 0;
+
+
     // */
 
     // auto start = std::chrono::high_resolution_clock::now();
     // uint16_t bestMove = getBestMove(board, table, 5);
+    // uint16_t bestMove = searchToDepth(3);
+
+
+
+
+    // int timeLimitMs = 100000;
+    // Search search(board, table, timeLimitMs);
+    // uint16_t bestMove = search.searchToDepth(3);
+
+    // cout << moveToString(bestMove) << endl;
     // int timeLimitMs = 1000;
     // uint16_t bestMove = iterativeDeepening(board, table, timeLimitMs);
     // printTranspositionTable(table);

@@ -37,9 +37,13 @@ constexpr int CASTLING_QUEENSIDE = 0x6;  // 0110
 constexpr int DOUBLE_PAWN_PUSH = 0x7;    // 0111
 constexpr int EN_PASSANT = 0x8;          // 1000, capturing e.p
 
+constexpr int EXACT_SCORE = 0;
+constexpr int UPPERBOUND_SCORE = 1;
+constexpr int LOWERBOUND_SCORE = 2;
+
 // Used for FEN/zobrist hashing
 constexpr int NO_EN_PASSANT = 64;
-constexpr int UNKNOWN_EVAL = 1234.0;
+constexpr int UNKNOWN_EVAL = 12345;
 // Declare Zobrist tables
 extern uint64_t zobristTable[12][64];
 extern uint64_t zobristCastling[16];
@@ -49,8 +53,9 @@ extern uint64_t zobristSideToMove;
 struct TranspositionTableEntry {
     int visitCount = 0;       // Default visit count
     uint16_t bestMove = 0;    // Default best move (0 indicates unknown)
-    double evaluation = UNKNOWN_EVAL;  // Default evaluation
+    int evaluation = UNKNOWN_EVAL;  // Default evaluation
     int depth = -1;           // Default depth (-1 indicates uninitialized depth)
+    int eval_type = EXACT_SCORE;
 };
 
 using TranspositionTable = std::unordered_map<uint64_t, TranspositionTableEntry>;
@@ -138,7 +143,7 @@ void initializeZobrist();
 uint64_t computeZobristHash(const BoardState& board);
 
 void updateTranspositionTable(TranspositionTable& table, uint64_t hash, uint16_t bestMove = 0,
-                              double evaluation = UNKNOWN_EVAL, int depth = -1);
+                              double evaluation = UNKNOWN_EVAL, int depth = -1, int eval_type = 0);
 
 bool getTranspositionTableEntry(const TranspositionTable& table, uint64_t hash,
                                 TranspositionTableEntry& entry);

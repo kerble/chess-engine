@@ -3,18 +3,18 @@
 
 #include "movegen.hpp"
 // Material scores
-constexpr double MATERIAL_SCORES[] = {
-    1.0,   // White Pawn
-    3.25,   // White Knight
-    3.25,   // White Bishop
-    5.0,   // White Rook
-    9.0,   // White Queen
+constexpr int MATERIAL_SCORES[] = {
+    100,   // White Pawn
+    325,   // White Knight
+    325,   // White Bishop
+    500,   // White Rook
+    900,   // White Queen
     200,   // White King
-    -1.0,  // Black Pawn
-    -3.25,  // Black Knight
-    -3.25,  // Black Bishop
-    -5.0,  // Black Rook
-    -9.0,  // Black Queen
+    -100,  // Black Pawn
+    -325,  // Black Knight
+    -325,  // Black Bishop
+    -500,  // Black Rook
+    -900,  // Black Queen
     -200   // Black King
 };
 
@@ -29,7 +29,7 @@ enum GameResult {
 };
 
 // Functions for evaluating positions
-double evaluate(const BoardState& board);
+int evaluate(const BoardState& board);
 int materialCount(const BoardState& board);
 int positionalScore(const BoardState& board);
 

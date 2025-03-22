@@ -454,13 +454,14 @@ uint64_t computeZobristHash(const BoardState& board) {
 }
 
 void updateTranspositionTable(TranspositionTable& table, uint64_t hash, uint16_t bestMove,
-                              double evaluation, int depth) {
+                              double evaluation, int depth, int eval_type) {
     auto& entry = table[hash];  // Access or create the entry
     // entry.visitCount++;
     if (depth > entry.depth) {  // Only update if depth is greater
         entry.bestMove = bestMove;
         entry.evaluation = evaluation;
         entry.depth = depth;
+        entry.eval_type = eval_type;
     }
 }
 
