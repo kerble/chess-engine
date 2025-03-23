@@ -1,6 +1,15 @@
 #include "move.hpp"
 
-// Convert uint16_t move to string representation
+/**
+ * Converts a uint16_t move into its string representation.
+ *
+ * - Decodes the move into its components.
+ * - Converts the from and to squares into algebraic notation.
+ * - Appends promotion piece notation if applicable.
+ *
+ * @param move The encoded move.
+ * @return The UCI string representation of the move.
+ */
 std::string moveToString(uint16_t move) {
     int fromSquare, toSquare;
     int special;
@@ -33,6 +42,16 @@ std::string moveToString(uint16_t move) {
     return moveString.str();
 }
 
+/**
+ * Stores the necessary board state data before making a move.
+ *
+ * - Captures castling rights, en passant square, move counters, and captured piece.
+ * - Used for move undo functionality.
+ *
+ * @param board The current board state.
+ * @param move The move being applied.
+ * @return A MoveUndo object storing relevant pre-move state data.
+ */
 MoveUndo storeUndoData(const BoardState& board, uint16_t move) {
     MoveUndo undoState;
     // Decode the move
@@ -89,6 +108,18 @@ MoveUndo storeUndoData(const BoardState& board, uint16_t move) {
     return undoState;
 }
 
+/**
+ * Applies a move to the board and updates necessary game state data.
+ *
+ * - Decodes and executes the move.
+ * - Updates piece bitboards, occupancy bitboards, and Zobrist hash.
+ * - Handles special moves: captures, promotions, castling, and en passant.
+ * - Updates move counters and flips the turn.
+ *
+ * @param board The board state to modify.
+ * @param move The move to apply.
+ * @return A MoveUndo object containing data to revert the move if needed.
+ */
 MoveUndo applyMove(BoardState& board, uint16_t move) {
     MoveUndo moveData = storeUndoData(board, move);
     uint64_t zobristHash = board.getZobristHash();
@@ -256,6 +287,17 @@ MoveUndo applyMove(BoardState& board, uint16_t move) {
     return moveData;
 }
 
+/**
+ * Restores the board to its previous state by undoing a move.
+ *
+ * - Restores captured pieces, castling rights, en passant state, and move counters.
+ * - Reverts piece positions and bitboards.
+ * - Updates Zobrist hash accordingly.
+ * - Flips the turn back to the previous player.
+ *
+ * @param board The board state to modify.
+ * @param undoState The stored state used to revert the move.
+ */
 void undoMove(BoardState& board, const MoveUndo& undoState) {
     // Retrieve the current Zobrist hash
     uint64_t zobristHash = board.getZobristHash();
@@ -337,22 +379,50 @@ void undoMove(BoardState& board, const MoveUndo& undoState) {
     board.setZobristHash(zobristHash);
 }
 
-/*
-Bits [0-5]: fromSquare
-Bits [6-11]: toSquare
-Bits [12-15]: Castling or en passant.
-*/
+/**
+ * Decodes a uint16_t move into its individual components.
+ *
+ * - Extracts source square, destination square, and special move flags.
+ * - Bits [0-5]: fromSquare
+ * - Bits [6-11]: toSquare
+ * - Bits [12-15]: Castling or en passant.
+ * 
+ * @param move The encoded move.
+ * @param fromSquare Output parameter for the from-square.
+ * @param toSquare Output parameter for the to-square.
+ * @param special Output parameter for the special move flag.
+ */
 uint16_t encodeMove(int fromSquare, int toSquare, int special) {
     return (fromSquare & 0x3F) | ((toSquare & 0x3F) << 6) | (special << 12);
 }
 
+/**
+ * Decodes a uint16_t move into its individual components.
+ *
+ * - Extracts source square, destination square, and special move flags.
+ *
+ * @param move The encoded move.
+ * @param fromSquare Output parameter for the from-square.
+ * @param toSquare Output parameter for the to-square.
+ * @param special Output parameter for the special move flag.
+ */
 void decodeMove(uint16_t move, int& fromSquare, int& toSquare, int& special) {
     fromSquare = move & 0x3F;       // Extract bits [0-5]
     toSquare = (move >> 6) & 0x3F;  // Extract bits [6-11]
     special = (move >> 12) & 0xF;   // Extract bits [12-15]
 }
 
-// Function to encode a UCI move into uint16_t move format
+/**
+ * Encodes a UCI move string into uint16_t move format.
+ *
+ * - Parses the UCI move string (e.g., "e2e4").
+ * - Converts square coordinates to indices.
+ * - Handles special move encoding (e.g., castling, promotions).
+ *
+ * @param board The current board state.
+ * @param uciMove The UCI move string.
+ * @return The encoded uint16_t move.
+ */
 uint16_t encodeUCIMove(BoardState& board, const std::string& uciMove) {
     if (uciMove.length() < 4 || uciMove.length() > 5) {
         throw std::invalid_argument("Invalid UCI move format: " + uciMove);
@@ -398,7 +468,17 @@ uint16_t encodeUCIMove(BoardState& board, const std::string& uciMove) {
     return encodeMove(fromSquare, toSquare, special);
 }
 
-// Function to determine if a move is kingside castling
+/**
+ * Determines if a given move is a kingside castling move.
+ *
+ * - Validates if the move is a castling move.
+ * - Checks if the destination square corresponds to kingside castling.
+ *
+ * @param fromSquare The square from which the move originates.
+ * @param toSquare The square to which the move is made.
+ * @param board The board state for validation.
+ * @return True if the move is kingside castling, otherwise false.
+ */
 bool isKingsideCastling(int fromSquare, int toSquare, const BoardState& board) {
     // Use isCastlingMove to validate it's a castling move
     if (!isCastlingMove(fromSquare, toSquare, board)) {
@@ -409,7 +489,17 @@ bool isKingsideCastling(int fromSquare, int toSquare, const BoardState& board) {
     return toSquare == 6 || toSquare == 62;
 }
 
-// Function to determine if a move is a castling move
+/**
+ * Determines if a given move is a castling move.
+ *
+ * - Validates if the move follows standard castling patterns.
+ * - Ensures the moving piece is a king.
+ *
+ * @param fromSquare The square from which the move originates.
+ * @param toSquare The square to which the move is made.
+ * @param board The board state for validation.
+ * @return True if the move is a castling move, otherwise false.
+ */
 bool isCastlingMove(int fromSquare, int toSquare, const BoardState& board) {
     // Check if the move is one of the standard castling patterns
     if (!((fromSquare == 4 && (toSquare == 6 || toSquare == 2)) ||
@@ -423,7 +513,17 @@ bool isCastlingMove(int fromSquare, int toSquare, const BoardState& board) {
     return pieceType == WHITE_KINGS || pieceType == BLACK_KINGS;
 }
 
-// Function to determine if a move is a double pawn push
+/**
+ * Determines if a move is a double pawn push.
+ *
+ * - Ensures the moving piece is a pawn.
+ * - Checks if the move advances exactly two squares forward.
+ *
+ * @param board The current board state.
+ * @param fromSquare The square from which the move originates.
+ * @param toSquare The square to which the move is made.
+ * @return True if the move is a double pawn push, otherwise false.
+ */
 bool isDoublePawnPush(const BoardState& board, int fromSquare, int toSquare) {
     // Ensure the moving piece is a pawn
     uint64_t fromMask = (1ULL << fromSquare);
@@ -437,7 +537,17 @@ bool isDoublePawnPush(const BoardState& board, int fromSquare, int toSquare) {
     return (rankDifference == 2 || rankDifference == -2);
 }
 
-// Function to determine if a move is an en passant move
+/**
+ * Determines if a move is an en passant capture.
+ *
+ * - Ensures the moving piece is a pawn.
+ * - Checks if the move targets the en passant square.
+ *
+ * @param board The current board state.
+ * @param fromSquare The square from which the move originates.
+ * @param toSquare The square to which the move is made.
+ * @return True if the move is an en passant capture, otherwise false.
+ */
 bool isEnPassantMove(const BoardState& board, int fromSquare, int toSquare) {
     // Ensure the moving piece is a pawn
     uint64_t fromMask = (1ULL << fromSquare);
@@ -450,6 +560,18 @@ bool isEnPassantMove(const BoardState& board, int fromSquare, int toSquare) {
     return toSquare == board.getEnPassant();
 }
 
+/**
+ * Identifies the type of piece occupying a given square.
+ *
+ * - Checks the bitboards of all piece types for the current player.
+ * - Returns the corresponding piece index if found.
+ * - If no matching piece is found, the function terminates the program.
+ *
+ * @param board The current board state.
+ * @param squareMask A bitmask representing the target square.
+ * @param isWhite True if checking for a white piece, false for black.
+ * @return The index of the piece occupying the square.
+ */
 int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite) {
     // Piece indices for the board's bitboards
     const int pieceOffset = isWhite ? 0 : 6;  // White: 0-5, Black: 6-11
@@ -466,11 +588,24 @@ int findPieceType(const BoardState& board, uint64_t squareMask, bool isWhite) {
     std::cout << bitboardToBinaryString(squareMask) << std::endl;
     std::string side = isWhite ? "white" : "black";
     std::cout << "Looking for " << side << " pieces\n";
-    // If no match is found, this should not happen in normal circumstances
+    // If no match is found, terminate. This should not happen in normal circumstances
     std::terminate();
     throw std::runtime_error("Square mask does not match any piece bitboard");
 }
 
+/**
+ * Finds the bitboard corresponding to the piece on a given square.
+ *
+ * - Iterates through the bitboards of all pieces for the specified color.
+ * - Identifies the bitboard that contains the given square.
+ * - Throws an exception if no piece is found on the square.
+ *
+ * @param board The current board state.
+ * @param square The square index to check.
+ * @param isWhite True if checking for a white piece, false for black.
+ * @return The bitboard containing the piece on the specified square.
+ * @throws std::runtime_error If no piece is found on the given square.
+ */
 uint64_t findBitboard(const BoardState& board, int square, bool isWhite) {
     uint64_t targetBit = (1ULL << square);
 
@@ -487,6 +622,18 @@ uint64_t findBitboard(const BoardState& board, int square, bool isWhite) {
     throw std::runtime_error("No piece found on the specified square!");
 }
 
+/**
+ * Determines the piece type for a pawn promotion.
+ *
+ * - Converts the special move flag into the corresponding piece index.
+ * - Supports queen, knight, bishop, and rook promotions.
+ * - Throws an exception if an invalid promotion type is provided.
+ *
+ * @param special The special move flag indicating the promotion type.
+ * @param isWhite True if the promotion applies to a white piece, false for black.
+ * @return The piece index for the promoted piece.
+ * @throws std::runtime_error If an invalid promotion type is specified.
+ */
 int getPromotedPieceType(int special, bool isWhite) {
     switch (special) {
         case PROMOTION_QUEEN:

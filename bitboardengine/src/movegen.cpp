@@ -14,10 +14,25 @@ inline int popLSB(uint64_t& bitboard) {
 
 /*
 Generate a bitboard with 1s on every square between a king and a piece actively
-checking it, including the attacking piece, excluding the king. Pass allOccupancy
-in the event of blocking/capturing and pass only enemy occupancy in the event
+checking it, including the attacking piece, excluding the king.  and pass only enemy occupancy in the event
 of pin detection/enforcement.
 */
+/**
+ * Generates a bitboard representing the squares between a king and an attacking piece.
+ *
+ * - Includes all squares between the king and the attacker, plus the attacker's square.
+ * - Used for detecting pins and identifying squares that must be blocked or the attacker captured.
+ * - Distinguishes between diagonal and straight-line attacks.
+ * - Uses the provided occupancy to determine attack paths.
+ * - Ensures the king's square is included when necessary to prevent edge-case bugs.
+ * - Pass allOccupancy in the event of blocking/capturing 
+ * - Pass only enemy occupancy in the event of pin detection/enforcement.
+ * @param kingSquare The square index of the king.
+ * @param attackerSquare The square index of the attacking piece.
+ * @param occupancy The occupancy bitboard (all pieces for blocking/capturing, enemy-only for pins).
+ * @return A bitboard with 1s on all squares between the king and the attacker (including the
+ * attacker).
+ */
 static uint64_t generateRayMask(int kingSquare, int attackerSquare, uint64_t occupancy) {
     // Create a bitboard where only the attacking piece is "occupied"
     uint64_t attackerOnlyBoard = 1ULL << attackerSquare;
@@ -49,7 +64,18 @@ static uint64_t generateRayMask(int kingSquare, int attackerSquare, uint64_t occ
     return rayMask;
 }
 
-// Return the position of the piece attacking the king. Assumed to be only one piece
+/**
+ * Identifies the position of the attacking piece threatening the king.
+ *
+ * - Assumes there is exactly one attacker.
+ * - Checks for attacks from knights, pawns, bishops, rooks, and queens.
+ * - Uses precomputed attack tables and magic bitboard functions for efficiency.
+ * - Throws an exception if no attacking piece is found, indicating a logic error.
+ *
+ * @param board The current board state.
+ * @return The square index of the attacking piece.
+ * @throws std::logic_error If no attacker is found (indicating a bug in the call logic).
+ */
 static int findAttackerSquare(const BoardState& board) {
     bool isWhite = board.getTurn();
     uint64_t kingBB = board.getBitboard(isWhite ? WHITE_KINGS : BLACK_KINGS);
@@ -95,8 +121,17 @@ static int findAttackerSquare(const BoardState& board) {
         "Something is wrong");
 }
 
-// Returns the bitboard including only the checking knight or pawn.
-// If no pawns nor knights are checking the king, return 0 (false).
+/**
+ * Determines if a knight or pawn is delivering an immediate check to the king.
+ *
+ * - Checks for knight and pawn threats separately.
+ * - Uses precomputed attack tables for efficiency.
+ * - Returns a bitboard with the checking piece(s) if found.
+ * - If no check is detected, returns 0.
+ *
+ * @param board The current board state.
+ * @return A bitboard with the checking knight or pawn, or 0 if none exist.
+ */
 static uint64_t isImmediateCheckByKnightOrPawn(const BoardState& board) {
     // Determine if it's White's turn
     bool isWhite = board.getTurn();
@@ -123,7 +158,12 @@ static uint64_t isImmediateCheckByKnightOrPawn(const BoardState& board) {
     return 0;
 }
 
-// Initialize king threat masks
+/**
+ * Initializes precomputed king threat masks.
+ *
+ * - Generates a bitboard for each square representing all squares a king can move to.
+ * - Used for move generation and check detection.
+ */
 void initKingThreatMasks() {
     for (int square = 0; square < 64; ++square) {
         uint64_t threat_mask = 0;
@@ -131,21 +171,26 @@ void initKingThreatMasks() {
         int rank = square / 8;  // Row number (0-7)
         int file = square % 8;  // Column number (0-7)
 
-        if (rank > 0 && file > 0) threat_mask |= (1ULL << square - 9);  // Up-left
-        if (rank > 0)             threat_mask |= (1ULL << square - 8);  // Up
-        if (rank > 0 && file < 7) threat_mask |= (1ULL << square - 7);  // Up-right
-        if (file < 7)             threat_mask |= (1ULL << square + 1);  // Right
-        if (rank < 7 && file < 7) threat_mask |= (1ULL << square + 9);  // Down-right
-        if (rank < 7)             threat_mask |= (1ULL << square + 8);  // Down
-        if (rank < 7 && file > 0) threat_mask |= (1ULL << square + 7);  // Down-left
-        if (file > 0)             threat_mask |= (1ULL << square - 1);  // Left
+        if (rank > 0 && file > 0) threat_mask |= (1ULL << (square - 9));  // Up-left
+        if (rank > 0)             threat_mask |= (1ULL << (square - 8));  // Up
+        if (rank > 0 && file < 7) threat_mask |= (1ULL << (square - 7));  // Up-right
+        if (file < 7)             threat_mask |= (1ULL << (square + 1));  // Right
+        if (rank < 7 && file < 7) threat_mask |= (1ULL << (square + 9));  // Down-right
+        if (rank < 7)             threat_mask |= (1ULL << (square + 8));  // Down
+        if (rank < 7 && file > 0) threat_mask |= (1ULL << (square + 7));  // Down-left
+        if (file > 0)             threat_mask |= (1ULL << (square - 1));  // Left
 
         // Store the computed threat mask
         king_threats_table[square] = threat_mask;
     }
 }
 
-// Initialize knight threat masks
+/**
+ * Initializes precomputed knight threat masks.
+ *
+ * - Generates a bitboard for each square representing all valid knight moves.
+ * - Used for move generation and check detection.
+ */
 void initKnightThreatMasks() {
     for (int square = 0; square < 64; ++square) {
         uint64_t threat_mask = 0;
@@ -154,36 +199,40 @@ void initKnightThreatMasks() {
         int file = square % 8;  // Column number (0-7)
 
         // All potential knight moves
-        if (rank > 1 && file > 0) threat_mask |= (1ULL << square - 17);  // Up 2, Left 1
-        if (rank > 1 && file < 7) threat_mask |= (1ULL << square - 15);  // Up 2, Right 1
-        if (rank > 0 && file > 1) threat_mask |= (1ULL << square - 10);  // Up 1, Left 2
-        if (rank > 0 && file < 6) threat_mask |= (1ULL << square - 6);   // Up 1, Right 2
-        if (rank < 7 && file > 1) threat_mask |= (1ULL << square + 6);   // Down 1, Left 2
-        if (rank < 7 && file < 6) threat_mask |= (1ULL << square + 10);  // Down 1, Right 2
-        if (rank < 6 && file > 0) threat_mask |= (1ULL << square + 15);  // Down 2, Left 1
-        if (rank < 6 && file < 7) threat_mask |= (1ULL << square + 17);  // Down 2, Right 1
+        if (rank > 1 && file > 0) threat_mask |= (1ULL << (square - 17));  // Up 2, Left 1
+        if (rank > 1 && file < 7) threat_mask |= (1ULL << (square - 15));  // Up 2, Right 1
+        if (rank > 0 && file > 1) threat_mask |= (1ULL << (square - 10));  // Up 1, Left 2
+        if (rank > 0 && file < 6) threat_mask |= (1ULL << (square - 6));   // Up 1, Right 2
+        if (rank < 7 && file > 1) threat_mask |= (1ULL << (square + 6));   // Down 1, Left 2
+        if (rank < 7 && file < 6) threat_mask |= (1ULL << (square + 10));  // Down 1, Right 2
+        if (rank < 6 && file > 0) threat_mask |= (1ULL << (square + 15));  // Down 2, Left 1
+        if (rank < 6 && file < 7) threat_mask |= (1ULL << (square + 17));  // Down 2, Right 1
 
         // Store the computed threat mask
         knight_threats_table[square] = threat_mask;
     }
 }
 
-// Initialize pawn threat masks for white and black
+/**
+ * Initializes precomputed pawn threat masks for white and black.
+ *
+ * - Generates bitboards for each square representing squares a pawn attacks.
+ * - Used for detecting pawn threats and enforcing check detection.
+ */
 void initPawnThreatMasks() {
     for (int square = 0; square < 64; ++square) {
         uint64_t white_threats = 0;
         uint64_t black_threats = 0;
 
-        int rank = square / 8;  // Row number (0-7)
         int file = square % 8;  // Column number (0-7)
 
         // White pawn threats (upward diagonals)
-        if (file > 0) white_threats |= (1ULL << square + 7);  // Up-left
-        if (file < 7) white_threats |= (1ULL << square + 9);  // Up-right
+        if (file > 0) white_threats |= (1ULL << (square + 7));  // Up-left
+        if (file < 7) white_threats |= (1ULL << (square + 9));  // Up-right
 
         // Black pawn threats (downward diagonals)
-        if (file > 0) black_threats |= (1ULL << square - 9);  // Down-left
-        if (file < 7) black_threats |= (1ULL << square - 7);  // Down-right
+        if (file > 0) black_threats |= (1ULL << (square - 9));  // Down-left
+        if (file < 7) black_threats |= (1ULL << (square - 7));  // Down-right
 
         // Store in the respective tables
         wpawn_threats_table[square] = white_threats;
@@ -191,6 +240,19 @@ void initPawnThreatMasks() {
     }
 }
 
+/**
+ * Generates an attack mask for a given piece type on a specific square.
+ *
+ * - Uses precomputed threat tables for kings, knights, and pawns.
+ * - Uses magic bitboard functions for sliding pieces (rooks, bishops, queens).
+ * - Accounts for occupancy when generating attack masks for sliding pieces.
+ * - Returns 0 for invalid piece types.
+ *
+ * @param pieceType The type of the attacking piece.
+ * @param attackerSquare The square where the attacking piece is located.
+ * @param allOccupancy The bitboard representing all occupied squares (used for sliding pieces).
+ * @return A bitboard representing the attack mask of the given piece.
+ */
 uint64_t generateThreatMask(int pieceType, int attackerSquare, uint64_t allOccupancy) {
     switch (pieceType) {
         case WHITE_KINGS:
@@ -224,7 +286,15 @@ uint64_t generateThreatMask(int pieceType, int attackerSquare, uint64_t allOccup
     }
 }
 
-// Returns the number of pieces checking the king
+/**
+ * Counts the number of pieces checking the king.
+ *
+ * - Iterates through all potential attackers and determines if they are delivering check.
+ * - Used to determine whether the king is in check and how many attackers exist.
+ *
+ * @param board The current board state.
+ * @return The number of pieces checking the king.
+ */
 static int numCheckers(const BoardState& board) {
     bool isWhite = board.getTurn();
     // Get the king's bitboard and occupancy for the side to check
@@ -283,7 +353,15 @@ static int numCheckers(const BoardState& board) {
     return checkers;
 }
 
-// Exact same as num checkers except it returns early.
+/**
+ * Determines whether the king is in check.
+ *
+ * - Similar to numCheckers but returns early upon detecting a check.
+ * - More efficient when only a boolean result is needed.
+ *
+ * @param board The current board state.
+ * @return True if the king is in check, false otherwise.
+ */
 bool is_in_check(const BoardState& board) {
     bool isWhite = board.getTurn();
     // Get the king's bitboard and occupancy for the side to check
@@ -341,9 +419,23 @@ bool is_in_check(const BoardState& board) {
     return false;
 }
 
-/*
-Returns a pin mask for every single pinned piece, if there are any.
-*/
+/**
+ * Detects and returns pin masks for all pinned pieces.
+ *
+ * - Identifies pieces that are pinned to their king by enemy sliding pieces.
+ * - Returns a vector of bitboards, each representing the squares a pinned piece
+ * - can move to without breaking the pin.
+ * - The mask is not necessarily all the legal moves the piece can do, just
+ * - the moves that don't break the pin.
+ * 
+ * @param kingSquare The square of the king.
+ * @param enemyOccupancy Bitboard of enemy pieces.
+ * @param enemyQueens Bitboard of enemy queens.
+ * @param enemyBishops Bitboard of enemy bishops.
+ * @param enemyRooks Bitboard of enemy rooks.
+ * @param alliedOccupancy Bitboard of allied pieces.
+ * @return A vector of bitboards, each representing a pinned piece's legal movement mask.
+ */
 static std::vector<uint64_t> detectPinnedPieces(int kingSquare, uint64_t enemyOccupancy,
                                                 uint64_t enemyQueens, uint64_t enemyBishops,
                                                 uint64_t enemyRooks, uint64_t alliedOccupancy) {
@@ -391,10 +483,16 @@ static std::vector<uint64_t> detectPinnedPieces(int kingSquare, uint64_t enemyOc
     return pinMasks;  // Return all pin masks
 }
 
-/*
-Generates a vector of encoded king moves, minus castling.
-Can be used in either check or not check.
-*/
+/**
+ * Generates a vector of encoded king moves, excluding castling.
+ *
+ * - Uses precomputed king move tables.
+ * - Filters out illegal moves based on board occupancy.
+ * - Can be used in both check and non-check scenarios.
+ *
+ * @param board The current board state.
+ * @return A vector of encoded uint16_t king moves.
+ */
 std::vector<uint16_t> generateKingMoves(const BoardState& board) {
     std::vector<uint16_t> legalKingMoves;
 
@@ -440,6 +538,16 @@ std::vector<uint16_t> generateKingMoves(const BoardState& board) {
     return legalKingMoves;
 }
 
+/**
+ * Generates a vector of legal castling moves.
+ *
+ * - Checks whether castling is allowed based on board state.
+ * - Ensures the squares between the king and rook are unoccupied.
+ * - Ensures the king does not castle through or into check.
+ *
+ * @param board The current board state.
+ * @return A vector of encoded uint16_t castling moves.
+ */
 static std::vector<uint16_t> generateCastlingMoves(const BoardState& board) {
     std::vector<uint16_t> castlingMoves;
 
@@ -509,15 +617,22 @@ static std::vector<uint16_t> generateCastlingMoves(const BoardState& board) {
     return castlingMoves;
 }
 
-/*
-This function generates a bitboard with all the potential moves
-for a single pawn on pawnSquare. It does not detect for check,
-pins, or the legality of these potential moves. It does check
-for en passant. It does not check for queening. For these
-reasons, it does not generate a vector of encoded moves.
-The output of this function is intended to have bitwise
-operations done to it.
-*/
+/**
+ * Generates a bitboard representing all potential moves for a single pawn.
+ *
+ * - Does NOT check for legality, check, or pins.
+ * - Includes single and double pawn pushes.
+ * - Includes captures and en passant (if applicable).
+ * - Does NOT handle pawn promotion.
+ * - Intended for use with bitwise operations for further filtering.
+ *
+ * @param pawnSquare The square of the pawn.
+ * @param enemyOccupancy Bitboard of enemy pieces.
+ * @param allOccupancy Bitboard of all occupied squares.
+ * @param enPassantSquare The en passant target square (-1 if none).
+ * @param isWhite Whether the pawn is white.
+ * @return A bitboard representing all potential pawn moves.
+ */
 static uint64_t generatePawnBitboard(
     int pawnSquare,           // The square of the pawn
     uint64_t enemyOccupancy,  // Bitboard of enemy pieces
@@ -567,7 +682,18 @@ static uint64_t generatePawnBitboard(
     return moves;
 }
 
-// Function to convert potential pawn moves from a bitboard to uint16_t encoded moves
+/**
+ * Converts a pawn move bitboard into a vector of encoded moves.
+ *
+ * - Takes a bitboard of possible pawn moves and encodes them into uint16_t format.
+ * - Used after generating the pawn move bitboard to create move lists.
+ * - Handles en passant squares separately.
+ *
+ * @param pawn_square The square of the pawn.
+ * @param move_bitboard A bitboard of valid pawn moves.
+ * @param epsquare The en passant target square (-1 if none).
+ * @return A vector of encoded uint16_t pawn moves.
+ */
 static std::vector<uint16_t> pawnBitboardToMoves(int pawn_square, uint64_t move_bitboard, uint8_t epsquare) {
     std::vector<uint16_t> encoded_moves;
 
@@ -595,7 +721,15 @@ static std::vector<uint16_t> pawnBitboardToMoves(int pawn_square, uint64_t move_
     return encoded_moves;
 }
 
-// Function to generate all potential moves without checks or pins
+/**
+ * Generates all potential moves on a board with no checks or pins.
+ *
+ * - Includes all pseudo-legal moves for all pieces.
+ * - Assumes there's no pinned pieces and we are not in check.
+ *
+ * @param board The current board state.
+ * @return A vector of encoded uint16_t pseudo-legal moves.
+ */
 static std::vector<uint16_t> generateMovesNoCheckNoPins(const BoardState& board) {
     std::vector<uint16_t> legalMoves;
     bool isWhite = board.getTurn();
@@ -643,6 +777,14 @@ static std::vector<uint16_t> generateMovesNoCheckNoPins(const BoardState& board)
     return legalMoves;
 }
 
+/**
+ * Generates all potential moves with respect to pinned pieces, also assumes
+ * we are not in check.
+ *
+ * @param board The current board state.
+ * @param pinMasks A vector of pin masks restricting pinned pieces.
+ * @return A vector of encoded uint16_t pseudo-legal moves.
+ */
 static std::vector<uint16_t> generateMovesNoCheckWithPins(const BoardState& board,
                                                           std::vector<uint64_t>& pinMasks) {
     std::vector<uint16_t> legalMoves;
@@ -724,6 +866,15 @@ static std::vector<uint16_t> generateMovesNoCheckWithPins(const BoardState& boar
     return legalMoves;
 }
 
+/**
+ * Generates all potential moves when the king is in check by only one piece, no double check.
+ * Assumes there are no pinned pieces on the board.
+ *
+ * - This comes out to be only blocks, captures, or moving the king, but not castling.
+ *
+ * @param board The current board state.
+ * @return A vector of encoded uint16_t legal moves in a single-check scenario.
+ */
 static std::vector<uint16_t> generateMovesSingleCheckNoPins(const BoardState& board) {
     std::vector<uint16_t> legalMoves;
 
@@ -783,6 +934,13 @@ static std::vector<uint16_t> generateMovesSingleCheckNoPins(const BoardState& bo
     return legalMoves;
 }
 
+/**
+ * Generates all potential moves when the king is in check by a single piece and there is a pinned piece.
+ *
+ * @param board The current board state.
+ * @param pinMasks A vector of pin masks restricting pinned pieces.
+ * @return A vector of encoded uint16_t legal moves in a single-check scenario.
+ */
 static std::vector<uint16_t> generateMovesSingleCheckWithPins(const BoardState& board,
                                                               std::vector<uint64_t>& pinMasks) {
     std::vector<uint16_t> legalMoves;
@@ -869,6 +1027,16 @@ static std::vector<uint16_t> generateMovesSingleCheckWithPins(const BoardState& 
     return legalMoves;
 }
 
+/**
+ * Generates all fully legal moves for the current position.
+ *
+ * - Accounts for checks, pins, and all movement restrictions.
+ * - Determines the number of attackers checking the king.
+ * - Calls the appropriate move generation function based on check and pin status.
+ *
+ * @param board The current board state.
+ * @return A vector of encoded uint16_t fully legal moves.
+ */
 std::vector<uint16_t> allLegalMoves(const BoardState& board) {
     // Determine the number of attackers
     int attacking_pieces = numCheckers(board);  // Returns 0, 1, or 2

@@ -75,13 +75,6 @@ void handlePosition(const std::string& args, BoardState& board, TranspositionTab
         std::cerr << "Error: Invalid argument for position command: " << token << std::endl;
     }
 
-    if(allLegalMoves(board).size() == 0){
-        cout << "no moves" << endl;
-    }
-    cout << "all moves for this position " << endl;
-    for (const uint16_t& move : allLegalMoves(board)) {
-        cout << moveToString(move) << endl;
-    }
 }
 
 void handleGo(const std::string& args, BoardState& board, TranspositionTable& table) {
