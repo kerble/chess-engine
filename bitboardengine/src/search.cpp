@@ -427,14 +427,16 @@ std::vector<uint16_t> goodCaptureOrChecks(BoardState& board, const std::vector<u
  * @param tableParam The transposition table used for storing results.
  * @param timeLimitParam The time limit in milliseconds for the search.
  */
-Search::Search(BoardState& boardParam, TranspositionTable& tableParam, int timeLimitParam) {
+Search::Search(BoardState& boardParam, TranspositionTable& tableParam, int timeLimitParam,
+               std::atomic<bool>& stopFlagParam)
+    : table(tableParam), stopFlag(stopFlagParam) {
     board = boardParam;
-    table = tableParam;
     timeLimitMs = timeLimitParam;
     maxDepth = 12;
     bestMoveSoFar = 0;
     bestEvalSoFar = -99999;
     searchInterrupted = false;
+    ttHits = 0;
 }
 
 /**
@@ -446,10 +448,18 @@ Search::Search(BoardState& boardParam, TranspositionTable& tableParam, int timeL
  * @return True if the search should stop, false otherwise.
  */
 bool Search::shouldStopSearch() {
+    // The UCI "stop" command sets this from another thread; check it first.
+    if (stopFlag.load()) {
+        searchInterrupted = true;
+        return true;
+    }
+
+    // timeLimitMs < 0 means "go infinite": no time budget, only an explicit stop ends it.
+    if (timeLimitMs < 0) {
+        return false;
+    }
+
     auto now = std::chrono::steady_clock::now();
-    // std::cout << "now: " << now << std::endl;
-    // std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime)
-                    //  .count() << " >= " << timeLimitMs << std::endl;
     if(std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count() >=
         timeLimitMs){
             searchInterrupted = true;
@@ -552,11 +562,15 @@ int Search::negamax(int depth, int alpha, int beta) {
             }
             decrementVisitCount(table, zobristHash);
             // Return stored evaluation based on the type of bound
-            if (entry.eval_type == EXACT_SCORE) return entry.evaluation;
-            if (entry.eval_type == UPPERBOUND_SCORE && entry.evaluation <= alpha)
+            if (entry.eval_type == EXACT_SCORE) { ttHits++; return entry.evaluation; }
+            if (entry.eval_type == UPPERBOUND_SCORE && entry.evaluation <= alpha) {
+                ttHits++;
                 return entry.evaluation;
-            if (entry.eval_type == LOWERBOUND_SCORE && entry.evaluation >= beta)
+            }
+            if (entry.eval_type == LOWERBOUND_SCORE && entry.evaluation >= beta) {
+                ttHits++;
                 return entry.evaluation;
+            }
         }
     }
 
@@ -723,6 +737,14 @@ void Search::getBestMove(int depth) {
 uint16_t Search::iterativeDeepening() {
     startTime = std::chrono::steady_clock::now();
     orderedLegalMoves = orderMoves(board, allLegalMoves(board));
+
+    // Fall back to some legal move immediately, in case we get stopped before depth 1
+    // finishes (e.g. a "stop" arriving during a time scramble). Without this,
+    // bestMoveSoFar stays at its default of 0, which prints as the illegal move "a1a1".
+    if (!orderedLegalMoves.empty()) {
+        bestMoveSoFar = orderedLegalMoves[0];
+    }
+
     for (int depth = 1; depth <= maxDepth; ++depth) {
         if (shouldStopSearch()) {
             break;
@@ -759,6 +781,9 @@ uint16_t Search::iterativeDeepening() {
 uint16_t Search::searchToDepth(int depth) {
     startTime = std::chrono::steady_clock::now();
     orderedLegalMoves = orderMoves(board, allLegalMoves(board));
+    if (!orderedLegalMoves.empty()) {
+        bestMoveSoFar = orderedLegalMoves[0];
+    }
     std::cout << moveToString(orderedLegalMoves[0]) << std::endl;
     getBestMove(depth);
     return bestMoveSoFar;

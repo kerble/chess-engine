@@ -1,6 +1,8 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <thread>
+#include <atomic>
 
 // #include "bitboard.hpp"
 // #include "movegen.hpp"
@@ -77,8 +79,9 @@ void handlePosition(const std::string& args, BoardState& board, TranspositionTab
 
 }
 
-void handleGo(const std::string& args, BoardState& board, TranspositionTable& table) {
-    int wtime = -1, btime = -1, movestogo = 30, movetime = -1;
+void handleGo(const std::string& args, BoardState& board, TranspositionTable& table,
+              std::atomic<bool>& stopFlag) {
+    int wtime = -1, btime = -1, winc = 0, binc = 0, movestogo = 30, movetime = -1;
     bool infinite = false;
 
     std::istringstream iss(args);
@@ -88,6 +91,10 @@ void handleGo(const std::string& args, BoardState& board, TranspositionTable& ta
             iss >> wtime;
         } else if (token == "btime") {
             iss >> btime;
+        } else if (token == "winc") {
+            iss >> winc;
+        } else if (token == "binc") {
+            iss >> binc;
         } else if (token == "movestogo") {
             iss >> movestogo;
         } else if (token == "movetime") {
@@ -97,17 +104,23 @@ void handleGo(const std::string& args, BoardState& board, TranspositionTable& ta
         }
     }
 
-    // Determine available time for this move
+    // Determine available time for this move. Lichess (and most UCI GUIs) send an increment
+    // (winc/binc) added back to the clock after every move, so budgeting wtime/movestogo alone
+    // leaves that time unused. We add the increment, then cap the result so a large increment
+    // can never make us allocate more time than the clock actually has left.
+    const int safetyBufferMs = 100;
     int timeLimitMs = -1;
     if (movetime != -1) {
         timeLimitMs = movetime;
     } else if (board.getTurn()) {  // White to move
         if (wtime > 0) {
-            timeLimitMs = (wtime / movestogo);
+            timeLimitMs = (wtime / movestogo) + winc;
+            timeLimitMs = std::min(timeLimitMs, std::max(1, wtime - safetyBufferMs));
         }
     } else {  // Black to move
         if (btime > 0) {
-            timeLimitMs = (btime / movestogo);
+            timeLimitMs = (btime / movestogo) + binc;
+            timeLimitMs = std::min(timeLimitMs, std::max(1, btime - safetyBufferMs));
         }
     }
 
@@ -118,7 +131,7 @@ void handleGo(const std::string& args, BoardState& board, TranspositionTable& ta
 
     // Call iterative deepening with the calculated time limit
     // std::vector<uint16_t> legalMoves = generateLegalMoves(board);
-    Search search(board, table, timeLimitMs);
+    Search search(board, table, timeLimitMs, stopFlag);
     uint16_t bestMove = search.iterativeDeepening();
     // uint16_t bestMove = iterativeDeepening(board, table, timeLimitMs);
 
@@ -136,6 +149,12 @@ int main(int argc, char* argv[]) {
     // Create a BoardState object
     BoardState board;  // Initialize board state
     TranspositionTable table;
+
+    // "go" runs on its own thread so this loop can keep reading stdin (in particular, "stop")
+    // while a search is in progress. stopRequested is how the UCI "stop" command tells that
+    // thread's Search object (see Search::shouldStopSearch) to return early.
+    std::atomic<bool> stopRequested{false};
+    std::thread searchThread;
 
     /* Import UCI moves from command line rather than from cin
     // Example UCI moves
@@ -213,20 +232,27 @@ int main(int argc, char* argv[]) {
         } else if (command == "isready") {
             std::cout << "readyok" << std::endl;
         } else if (command == "ucinewgame") {
+            if (searchThread.joinable()) searchThread.join();
             BoardState newBoard;
             board = newBoard;
         } else if (command == "position") {
+            if (searchThread.joinable()) searchThread.join();
             std::string args;
             std::getline(iss, args);
             handlePosition(args, board, table);
         } else if (command == "go") {
+            if (searchThread.joinable()) searchThread.join();  // previous search must have finished
             std::string args;
             std::getline(iss, args);
-            handleGo(args, board, table);
+            stopRequested = false;
+            searchThread = std::thread(handleGo, args, std::ref(board), std::ref(table),
+                                        std::ref(stopRequested));
         } else if (command == "stop") {
-            std::cout << "Stopping search." << std::endl;
-            // Logic to stop search would go here.
+            stopRequested = true;
+            if (searchThread.joinable()) searchThread.join();  // wait for "bestmove" to print
         } else if (command == "quit") {
+            stopRequested = true;
+            if (searchThread.joinable()) searchThread.join();
             std::cout << "Quitting engine." << std::endl;
             break;
         } else {
