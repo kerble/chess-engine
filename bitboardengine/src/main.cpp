@@ -145,6 +145,7 @@ int main(int argc, char* argv[]) {
     initPawnThreatMasks();
     initmagicmoves();
     initializeZobrist();
+    initPassedPawnMasks();
 
     // Create a BoardState object
     BoardState board;  // Initialize board state

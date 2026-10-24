@@ -5,15 +5,20 @@
 #include <string>
 #include <algorithm>
 #include <chrono>
+#include <atomic>
 
 class Search {
    public:
     // Constructor
-    Search(BoardState& board, TranspositionTable& table, int timeLimitMs);
+    Search(BoardState& board, TranspositionTable& table, int timeLimitMs, std::atomic<bool>& stopFlag);
 
     // Main entry point for search
     uint16_t iterativeDeepening();
     uint16_t searchToDepth(int depth);
+
+    // How many times this search returned a cached result instead of re-searching a subtree.
+    // Only meaningful as a diagnostic/demo counter, not used by the search itself.
+    int getTTHits() const { return ttHits; }
 
    private:
     // Search parameters
@@ -26,10 +31,16 @@ class Search {
     int completedDepth;
     bool searchInterrupted;
     std::chrono::steady_clock::time_point startTime;
+    int ttHits;
 
-    // Board and table as member variables
+    // Board and table as member variables.
+    // `table` is a REFERENCE: it binds to the caller's transposition table instead of copying
+    // it, so entries this search writes are visible to (and persist for) whoever owns the table.
     BoardState board;
-    TranspositionTable table;
+    TranspositionTable& table;
+
+    // External stop signal, set by the UCI "stop" command from another thread.
+    std::atomic<bool>& stopFlag;
 
     std::vector<std::pair<int, uint16_t>> scoredMoves;
     std::vector<uint16_t> orderedLegalMoves;
