@@ -32,11 +32,8 @@ std::string moveToString(uint16_t move) {
         case PROMOTION_BISHOP:
             moveString << "b";
             break;
-        case EN_PASSANT:
-            moveString << "e.p.";
-            break;
         default:
-            break;  // No special move
+            break;  // No suffix: UCI writes castling and en passant as plain from/to squares
     }
 
     return moveString.str();
